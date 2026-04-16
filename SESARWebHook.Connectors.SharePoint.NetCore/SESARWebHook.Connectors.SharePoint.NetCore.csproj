@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>SESARWebHook.Connectors.SharePoint</RootNamespace>
+    <AssemblyName>SESARWebHook.Connectors.SharePoint.NetCore</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MimeKit" Version="4.16.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="SecureExchangesSDK">
+      <HintPath>..\..\..\Downloads\SeSdkCore\net9.0\SecureExchangesSDK.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>
