@@ -21,9 +21,9 @@ Generic webhook integration framework for [Secure Exchanges (SESAR)](https://www
                           └─────────────────────────┘
 ```
 
-**What the framework handles:** webhook reception, payload decryption, authentication helpers (OAuth2, API Key, Basic Auth), handler routing, and secrets encryption via Windows DPAPI.
+**What the framework handles:** webhook reception, payload decryption, authentication helpers (OAuth2, API Key, Basic Auth), connector routing, and secrets encryption via Windows DPAPI.
 
-**What you implement:** your business logic in a simple handler class. Extract the data you need from the manifest, call your API, done.
+**What you implement:** your business logic in a simple connector class. Extract the data you need from the manifest, call your API, done.
 
 ## Quick Start
 
@@ -42,7 +42,7 @@ nuget restore SESARWebHookCore.sln
 msbuild SESARWebHookCore.sln /p:Configuration=Release
 ```
 
-### 4. Configure DPAPI Protection
+### 2. Configure DPAPI Protection
 
 Edit `Web.config`:
 
@@ -54,7 +54,7 @@ Edit `Web.config`:
 <!-- <add key="DataProtectionScope" value="LocalMachine" /> -->
 ```
 
-### 5. Configure Secrets
+### 3. Configure Secrets
 
 Copy `connectors.secrets.template.json` to `connectors.secrets.json` and fill in your credentials:
 
@@ -77,7 +77,7 @@ Copy `connectors.secrets.template.json` to `connectors.secrets.json` and fill in
 
 > **Automatic encryption:** On first API call, the secrets file is automatically encrypted with Windows DPAPI (`ProtectedData.Protect`). The plaintext file is replaced by an encrypted binary. By default (`CurrentUser` scope), only the IIS AppPool identity can decrypt it. To update secrets, delete the encrypted file and provide a new plaintext version.
 
-### 6. Configure SESAR
+### 4. Configure SESAR
 
 In your SESAR configuration, set the webhook URL:
 
@@ -85,7 +85,7 @@ In your SESAR configuration, set the webhook URL:
 WebHook = https://your-server/api/webhook/filesystem
 ```
 
-### 7. Test
+### 5. Test
 
 ```bash
 curl https://your-server/api/health
@@ -98,7 +98,7 @@ curl https://your-server/api/handlers
 # Lists all loaded custom handlers
 ```
 
-## Setup htpps
+## Setup htpps for development
 
 ### 1. In an admin powershell terminal, run the following commands
 
@@ -122,7 +122,19 @@ Export-PfxCertificate -Cert $cert -FilePath "PATH_TO_THE_KEY" -Password $pwd
 
 ### 7. In the new window that has opened, press on ``Next`` then enter the path to the key that you created on step 1 then press ``Next``
 
-### 8. 
+### 8. Select ``Place all certificates in the following store`` and enter ``Personal`` in the field below the hit ``Next`` then ``Finish``
+
+### 9. In SESARWebHook.API.NetCore/appsettings.json, add the following code:
+
+```json
+"Kestrel": {
+  "Endpoints": {
+    "Https": {
+      "Url": "https://localhost:5001"
+    }
+  }
+}
+```
 
 ## Architecture
 
@@ -337,7 +349,7 @@ Update-Package SESARWebHook.Core
 
 **The API (via GitHub Release):**
 - Download the new release
-- Replace files (keep `/Handlers/` and `connectors.secrets.json`)
+- Replace files (keep `/Connectors/` and `connectors.secrets.json`)
 
 ## Support
 
