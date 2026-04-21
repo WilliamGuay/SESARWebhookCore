@@ -21,8 +21,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.Tem
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.ZohoCRM.NetCore", "SESARWebHook.Connectors.ZohoCRM.NetCore\SESARWebHook.Connectors.ZohoCRM.NetCore.csproj", "{7539072A-63A9-7595-4B7D-F7DFA889D58F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.OneDrive.NetCore", "SESARWebHook.Connectors.OneDrive.NetCore\SESARWebHook.Connectors.OneDrive.NetCore.csproj", "{9AF7A524-72AA-D978-2818-1AD35433ACDE}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -61,10 +59,6 @@ Global
 		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -75,7 +69,6 @@ Global
 		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{2472197B-7296-9D53-3360-352E279CE79E} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{7539072A-63A9-7595-4B7D-F7DFA889D58F} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
-		{9AF7A524-72AA-D978-2818-1AD35433ACDE} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {70A2B731-B4BA-4430-B80E-A2821E021970}

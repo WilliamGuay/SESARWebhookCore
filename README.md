@@ -98,6 +98,32 @@ curl https://your-server/api/handlers
 # Lists all loaded custom handlers
 ```
 
+## Setup htpps
+
+### 1. In an admin powershell terminal, run the following commands
+
+```powershell
+$cert = New-SelfSignedCertificate -DnsName "localhost" -CertStoreLocation "Cert:\LocalMachine\My" -FriendlyName "ASP.NET DEV cert" -NotAfter (Get-Date).AddYears(2) -KeyExportPolicy Exportable -KeySpec Signature
+
+$pwd = ConvertTo-SecureString "SECURED_PASSWORD" -AsPlainText -Force
+
+Export-PfxCertificate -Cert $cert -FilePath "PATH_TO_THE_KEY" -Password $pwd
+```
+
+### 2. In windows run panel (Win+R), type in mmc and press enter
+
+### 3. In the window that opened, press Ctrl+M
+
+### 4. Press on ``Certificates`` > ``Add >`` > ``My user account`` > ``Finish``
+
+### 5. With the tab on the left of the window, navigate to ``Certificates`` > ``Personal`` > ``Certificates``
+
+### 6. Right click in the window then press ``All Tasks`` then ``Import...``
+
+### 7. In the new window that has opened, press on ``Next`` then enter the path to the key that you created on step 1 then press ``Next``
+
+### 8. 
+
 ## Architecture
 
 ### Two Ways to Integrate
