@@ -1,30 +1,23 @@
+using SecureExchangesSDK.Helpers;
 using SecureExchangesSDK.Models.Messenging;
+using SESARWebHook.Core.Auth;
 using SESARWebHook.Core.Interfaces;
 using SESARWebHook.Core.Models;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SESARWebHook.Connectors.Template
 {
-  /// <summary>
-  /// ╔═══════════════════════════════════════════════════════════════════════════════╗
-  /// ║                    TEMPLATE DE CONNECTEUR SESAR WEBHOOK                       ║
-  /// ║                                                                               ║
-  /// ║  Ce fichier est un point de départ pour créer votre propre connecteur.        ║
-  /// ║  Copiez ce projet et adaptez-le à votre système externe.                      ║
-  /// ║                                                                               ║
-  /// ║  POINT D'ENTRÉE PRINCIPAL : ProcessManifestAsync()                            ║
-  /// ║  C'est là que vous recevez les données SESAR et les envoyez à votre système.  ║
-  /// ╚═══════════════════════════════════════════════════════════════════════════════╝
-  /// </summary>
   public class TemplateConnector : IIntegrationConnector
   {
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // SECTION 1 : CONFIGURATION DU CONNECTEUR
-    //
-    // Ces propriétés identifient votre connecteur dans le système.
-    // ═══════════════════════════════════════════════════════════════════════════════
+    private byte[] _key;
+    private byte[] _iv;
 
     public string ConnectorId => "onedrive";
     public string DisplayName => "OneDrive Connector";
@@ -45,26 +38,12 @@ namespace SESARWebHook.Connectors.Template
     /// </summary>
     public IEnumerable<string> RequiredConfigurationKeys => new[]
     {
-            "ApiUrl",    // URL de votre API externe
-            "ApiKey"     // Clé d'API (sera déchiffrée automatiquement si chiffrée)
-        };
+            "ClientId",
+            "ClientSecret",
+            "TenantId"
+    };
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // SECTION 2 : VARIABLES DE CONFIGURATION
-    //
-    // Stockez ici les valeurs lues depuis Web.config
-    // ═══════════════════════════════════════════════════════════════════════════════
-
-    private string _apiUrl;
-    private string _apiKey;
-    // Ajoutez vos propres variables selon vos besoins
-
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // SECTION 3 : INITIALISATION
-    //
-    // Cette méthode est appelée au démarrage avec les paramètres de Web.config.
-    // C'est ici que vous récupérez vos paramètres de configuration.
-    // ═══════════════════════════════════════════════════════════════════════════════
+    private OAuth2ClientCredentialsHelper _authHelper;
 
     /// <summary>
     /// Initialise le connecteur avec les paramètres de configuration.
@@ -80,27 +59,25 @@ namespace SESARWebHook.Connectors.Template
     public void Initialize(Dictionary<string, string> settings)
     {
       // Récupérer les paramètres (avec valeurs par défaut si absent)
-      _apiUrl = settings.ContainsKey("ApiUrl") ? settings["ApiUrl"] : "";
-      _apiKey = settings.ContainsKey("ApiKey") ? settings["ApiKey"] : "";
+      var clientId = settings.ContainsKey("ClientId") ? settings["ClientId"] : "";
+      var clientSecret = settings.ContainsKey("ClientSecret") ? settings["ClientSecret"] : "";
+      var tenantId = settings.ContainsKey("TenantId") ? settings["TenantId"] : "";
 
-      // NOTE: Si ApiKey était chiffrée dans Web.config, elle est automatiquement
-      // déchiffrée par WebHookConfigHelper avant d'arriver ici.
+      var keys = (settings.ContainsKey("PrivateAESKey") ? settings["PrivateAESKey"] : "").Split('_');
+      _key = Convert.FromBase64String(keys[0]);
+      _iv = Convert.FromBase64String(keys[1]);
 
-      // TODO: Ajoutez votre logique d'initialisation
-      // Exemple: créer un client HTTP, valider les paramètres, etc.
+      if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret))
+      {
+        // Utiliser le helper OAuth2 du Core
+        _authHelper = OAuth2ClientCredentialsHelper.ForOneDrive(
+            tenantId,
+            clientId,
+            clientSecret
+        );
+      }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // SECTION 4 : VALIDATION DE LA CONFIGURATION
-    //
-    // Vérifie que tous les paramètres requis sont présents et valides.
-    // ═══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Valide que la configuration est correcte.
-    /// Appelé avant d'utiliser le connecteur.
-    /// </summary>
-    /// <returns>True si la configuration est valide</returns>
     public Task<bool> ValidateConfigurationAsync(Dictionary<string, string> settings)
     {
       // Vérifier les paramètres obligatoires
@@ -112,41 +89,19 @@ namespace SESARWebHook.Connectors.Template
         }
       }
 
-      // TODO: Ajoutez vos propres validations
-      // Exemple: vérifier le format de l'URL, etc.
-
       return Task.FromResult(true);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // SECTION 5 : TEST DE CONNEXION
-    //
-    // Vérifie que la connexion à votre système externe fonctionne.
-    // Accessible via POST /api/connectors/{id}/test
-    // ═══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Teste la connexion à votre système externe.
-    /// Utile pour diagnostiquer les problèmes de configuration.
-    /// </summary>
-    /// <returns>True si la connexion fonctionne</returns>
     public async Task<bool> TestConnectionAsync()
     {
       try
       {
-        // TODO: Implémentez votre test de connexion
-        // Exemple: faire un appel API simple pour vérifier que ça répond
+        if (_authHelper == null)
+        {
+          return false;
+        }
 
-        // Exemple avec HttpClient :
-        // using (var client = new HttpClient())
-        // {
-        //     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-        //     var response = await client.GetAsync($"{_apiUrl}/health");
-        //     return response.IsSuccessStatusCode;
-        // }
-
-        await Task.Delay(1); // Placeholder
-        return true;
+        return await _authHelper.TestConnectionAsync();
       }
       catch
       {
@@ -154,192 +109,95 @@ namespace SESARWebHook.Connectors.Template
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // ╔═══════════════════════════════════════════════════════════════════════════╗
-    // ║                                                                           ║
-    // ║   SECTION 6 : POINT D'ENTRÉE PRINCIPAL - VOTRE LOGIQUE D'AFFAIRE ICI     ║
-    // ║                                                                           ║
-    // ╚═══════════════════════════════════════════════════════════════════════════╝
-    //
-    // C'est ICI que vous implémentez votre logique d'intégration !
-    //
-    // Cette méthode est appelée chaque fois que SESAR envoie un webhook.
-    // Vous recevez le StoreManifest déchiffré contenant toutes les données.
-    // ═══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// ╔═══════════════════════════════════════════════════════════════════════════╗
-    /// ║                     VOTRE LOGIQUE D'AFFAIRE ICI                           ║
-    /// ╚═══════════════════════════════════════════════════════════════════════════╝
-    ///
-    /// Cette méthode est appelée à chaque webhook SESAR.
-    ///
-    /// PARAMÈTRES :
-    /// - manifest : Les données de l'échange SESAR (déjà déchiffrées)
-    /// - context  : Informations sur la requête (ID, timestamp, etc.)
-    ///
-    /// RETOUR :
-    /// - IntegrationResult.Ok() si succès
-    /// - IntegrationResult.Fail() si erreur
-    /// </summary>
-    /// <param name="manifest">
-    /// Le StoreManifest contient toutes les données de l'échange SESAR :
-    ///
-    /// PROPRIÉTÉS PRINCIPALES DU MANIFEST :
-    /// ─────────────────────────────────────────────────────────────────────────────
-    ///
-    /// manifest.OriginalRecipientInfo    → Informations sur l'échange original
-    ///   .ContactInfo                    → Email de l'expéditeur
-    ///   .Subject                        → Sujet du message
-    ///   .CreateOn                       → Date de création
-    ///   .Destination                    → Destinataire original
-    ///
-    /// manifest.Recipients[]             → Liste des destinataires (RecipientManifest)
-    ///   [i].Email                       → Email du destinataire
-    ///   [i].Phone                       → Téléphone
-    ///   [i].TrackingID                  → ID de suivi
-    ///   [i].DateSent                    → Date d'envoi
-    ///   [i].DelRef                      → Référence de livraison
-    ///
-    /// manifest.FilesLocation[]          → Liste des fichiers (FileLocation)
-    ///   [i].FileName                    → Nom du fichier
-    ///   [i].FileHash                    → Hash SHA512 du fichier
-    ///
-    /// manifest.FilesMetaData[]          → Métadonnées des fichiers
-    ///   [i].RealFileName                → Nom réel du fichier
-    ///   [i].FileHash                    → Hash du fichier
-    ///
-    /// manifest.Base64Subject            → Sujet encodé en Base64
-    /// manifest.IsReply                  → Est-ce une réponse ?
-    /// manifest.CallBackParameter        → Paramètres de callback
-    /// manifest.TrackingRecipientList[]  → Liste de suivi des destinataires
-    ///   [i].TrackingID                  → ID de suivi
-    /// manifest.DirectoryPath            → Chemin du répertoire de stockage
-    ///
-    /// ─────────────────────────────────────────────────────────────────────────────
-    /// </param>
-    /// <param name="context">
-    /// Le WebhookContext contient des infos sur la requête :
-    ///
-    /// context.RequestId           → ID unique de cette requête webhook
-    /// context.ReceivedAt          → Timestamp de réception
-    /// context.ConnectorId         → ID du connecteur utilisé
-    /// context.SourceIp            → IP source de la requête
-    /// context.RawPayload          → JSON brut (pour debug)
-    /// </param>
-    /// <returns>IntegrationResult indiquant le succès ou l'échec</returns>
     public async Task<IntegrationResult> ProcessManifestAsync(StoreManifest manifest, WebhookContext context)
     {
-      try
+      return IntegrationResult.Ok();
+    }
+
+    private async Task<IntegrationResult> CreateFolder(string accessToken, HttpClient client, Uri siteUri, string folderName)
+    {
+      client.DefaultRequestHeaders.Authorization =
+              new AuthenticationHeaderValue("Bearer", accessToken);
+      client.DefaultRequestHeaders.Accept.Add(
+          new MediaTypeWithQualityHeaderValue("application/json"));
+
+      var createFolderRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root/children"; // TODO: Changer le line pour qu'il soit compatible avec onedrive (trouver le pattern)
+      var content = new StringContent($"{{ \"name\": \"{folderName}\", \"folder\": {{}} }}");
+      content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+      var response = await client.PostAsync(createFolderRequest, content);
+      var responseContent = await response.Content.ReadAsStringAsync();
+
+      return IntegrationResult.Ok(responseContent);
+    }
+
+    // TODO: Vérification de l'espace restant dans le drive où le fichier sera uploadé afin de s'assurer 
+    private async Task<IntegrationResult> UploadFile(HttpClient client, string accessToken, Uri siteUri, StoreManifest manifest, int fileIndex, string folderName)
+    {
+      string filePath = manifest.FilesLocation[fileIndex].FullPath;
+      string fileName = manifest.FilesMetaData[fileIndex].RealFileName;
+
+      bool deleteDecryptedFile = false;
+
+      if (!File.Exists(filePath))
       {
-        // ═══════════════════════════════════════════════════════════════════════
-        // ÉTAPE 1 : EXTRAIRE LES DONNÉES DU MANIFEST
-        // ═══════════════════════════════════════════════════════════════════════
+        deleteDecryptedFile = true;
+        CryptoHelper.DecryptFile(filePath + ".secf", filePath, _key, _iv);
+      }
 
-        // Récupérer les informations de l'expéditeur via OriginalRecipientInfo
-        var senderEmail = manifest.OriginalRecipientInfo?.ContactInfo ?? "inconnu";
+      await UploadFileWithUploadSession(client, accessToken, siteUri, filePath, fileName, folderName);
 
-        // Récupérer le sujet (encodé en Base64)
-        string subject = "(Sans sujet)";
-        if (!string.IsNullOrEmpty(manifest.Base64Subject))
+      if (deleteDecryptedFile)
+        File.Delete(filePath);
+
+      return IntegrationResult.Ok("File Uploaded");
+    }
+
+    //Doc: https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
+    private async Task<IntegrationResult> UploadFileWithUploadSession(HttpClient client, string accessToken, Uri siteUri, string filePath, string fileName, string folderName)
+    {
+      if (File.Exists(filePath))
+      {
+        client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", accessToken);
+        client.DefaultRequestHeaders.Accept.Add(
+            new MediaTypeWithQualityHeaderValue("application/json"));
+
+        string validFileName = Regex.Replace(fileName, "[\"*:<>?/\\|]", " ");
+        validFileName = Regex.Replace(validFileName, "  +", " ");
+
+        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites{siteUri.Host}/drive/root:/{folderName}/{validFileName}:/createUploadSession";
+        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{validFileName}\" }} }}");
+        uploadSessionRequestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        var response = await client.PostAsync(createUploadSessionRequest, uploadSessionRequestContent);
+        var responseContent = await response.Content.ReadFromJsonAsync<UploadSessionResponse>();
+
+        const int UPLOAD_CHUNK_SIZE = 10485760;
+
+        byte[] file = File.ReadAllBytes(filePath);
+
+        for (long i = 0; i < file.LongLength; i += UPLOAD_CHUNK_SIZE)
         {
-          try
-          {
-            subject = System.Text.Encoding.UTF8.GetString(
-                Convert.FromBase64String(manifest.Base64Subject));
-          }
-          catch { /* Garder la valeur par défaut */ }
+          long maxByte = Math.Min(i + UPLOAD_CHUNK_SIZE, file.LongLength - 1);
+          var content = new ByteArrayContent(file[(int)i..(int)(maxByte + 1)]);
+          content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
+          content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{file.LongLength}");
+
+          var responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
+          var responseUloadContent = await responseUpload.Content.ReadAsStringAsync();
         }
 
-        // Récupérer le premier destinataire
-        var firstRecipient = manifest.Recipients?.Count > 0
-            ? manifest.Recipients[0]
-            : null;
-        var recipientEmail = firstRecipient?.Email ?? "inconnu";
-        var trackingId = firstRecipient?.TrackingID ?? "";
-
-        // Compter les fichiers
-        var fileCount = manifest.FilesLocation?.Count ?? 0;
-
-        // Est-ce une réponse ?
-        var isReply = manifest.IsReply;
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // ÉTAPE 2 : TRANSFORMER LES DONNÉES POUR VOTRE SYSTÈME
-        // ═══════════════════════════════════════════════════════════════════════
-
-        // TODO: Mappez les données du manifest vers votre modèle
-        // Exemple pour un CRM :
-        // var leadData = new {
-        //     Email = senderEmail,
-        //     RecipientEmail = recipientEmail,
-        //     Source = "SESAR",
-        //     Notes = $"Échange sécurisé : {subject}",
-        //     AttachmentCount = fileCount,
-        //     IsReply = isReply,
-        //     TrackingId = trackingId
-        // };
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // ÉTAPE 3 : ENVOYER VERS VOTRE SYSTÈME EXTERNE
-        // ═══════════════════════════════════════════════════════════════════════
-
-        // TODO: Implémentez l'appel à votre API/système
-        // Exemple avec HttpClient :
-        // using (var client = new HttpClient())
-        // {
-        //     client.DefaultRequestHeaders.Add("Authorization", $"Bearer {_apiKey}");
-        //     var json = JsonConvert.SerializeObject(leadData);
-        //     var content = new StringContent(json, Encoding.UTF8, "application/json");
-        //     var response = await client.PostAsync($"{_apiUrl}/leads", content);
-        //
-        //     if (!response.IsSuccessStatusCode)
-        //     {
-        //         var error = await response.Content.ReadAsStringAsync();
-        //         return IntegrationResult.Fail("Erreur API", error, ConnectorId);
-        //     }
-        //
-        //     var result = await response.Content.ReadAsStringAsync();
-        //     var created = JsonConvert.DeserializeObject<dynamic>(result);
-        //     externalId = created.id;
-        // }
-
-        // Placeholder - remplacez par votre logique
-        await Task.Delay(1);
-        string externalId = Guid.NewGuid().ToString();
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // ÉTAPE 4 : RETOURNER LE RÉSULTAT
-        // ═══════════════════════════════════════════════════════════════════════
-
-        return new IntegrationResult
-        {
-          Success = true,
-          Message = $"Traitement réussi pour {senderEmail}",
-          ConnectorId = ConnectorId,
-          ExternalReferenceId = externalId,  // ID créé dans votre système
-          ItemsProcessed = 1,
-          Metadata = new Dictionary<string, object>
-                    {
-                        { "SenderEmail", senderEmail },
-                        { "Subject", subject },
-                        { "FileCount", fileCount },
-                        { "ProcessedAt", DateTime.UtcNow }
-                    }
-        };
+        return IntegrationResult.Ok("File uploaded with success");
       }
-      catch (Exception ex)
-      {
-        // ═══════════════════════════════════════════════════════════════════════
-        // GESTION DES ERREURS
-        // ═══════════════════════════════════════════════════════════════════════
-
-        return IntegrationResult.Fail(
-            message: "Erreur lors du traitement",
-            errorDetails: ex.ToString(),
-            connectorId: ConnectorId
-        );
-      }
+      return IntegrationResult.Fail("File to upload does not exist");
     }
+  }
+
+  public class UploadSessionResponse
+  {
+    public string Context { get; set; }
+    public DateTime ExpirationDateTime { get; set; }
+    public string[] NextExcpectedRanges { get; set; }
+    public string UploadUrl { get; set; }
   }
 }

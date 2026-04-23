@@ -70,8 +70,7 @@ namespace SESARWebHook.Connectors.SharePoint
         _authHelper = OAuth2ClientCredentialsHelper.ForSharePoint(
             tenantId,
             clientId,
-            clientSecret,
-            _siteUrl
+            clientSecret
         );
       }
 

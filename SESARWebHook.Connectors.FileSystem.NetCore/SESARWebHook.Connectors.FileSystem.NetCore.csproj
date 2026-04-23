@@ -9,13 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
+    <PackageReference Include="SecureExchanges.NetCore" Version="26.4.20.2" />
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="SecureExchangesSDK">
-      <HintPath>..\..\..\Downloads\SeSdkCore\net9.0\SecureExchangesSDK.dll</HintPath>
-    </Reference>
+    <ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
   </ItemGroup>
 
 </Project>

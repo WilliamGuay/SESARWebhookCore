@@ -107,10 +107,8 @@ namespace SESARWebHook.Core.Auth
     public static OAuth2ClientCredentialsHelper ForSharePoint(
         string tenantId,
         string clientId,
-        string clientSecret,
-        string sharePointUrl)
+        string clientSecret)
     {
-      var uri = new Uri(sharePointUrl);
       var scope = $"https://graph.microsoft.com/.default";
       return ForAzureAD(tenantId, clientId, clientSecret, scope);
     }
@@ -130,6 +128,15 @@ namespace SESARWebHook.Core.Auth
     {
       var scope = $"{dynamicsUrl.TrimEnd('/')}/.default";
       return ForAzureAD(tenantId, clientId, clientSecret, scope);
+    }
+
+    public static OAuth2ClientCredentialsHelper ForOneDrive(
+        string tenantId,
+        string clientId,
+        string slientSecret)
+    {
+      var scope = $"https://graph.microsoft.com/.default";
+      return ForAzureAD(tenantId , clientId, slientSecret, scope);
     }
 
     /// <summary>

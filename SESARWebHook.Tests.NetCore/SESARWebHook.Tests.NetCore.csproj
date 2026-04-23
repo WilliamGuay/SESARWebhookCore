@@ -14,16 +14,11 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.6.3" />
     <PackageReference Include="MSTest.TestFramework" Version="3.6.3" />
+    <PackageReference Include="SecureExchanges.NetCore" Version="26.4.20.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="SecureExchangesSDK">
-      <HintPath>..\..\..\Downloads\SeSdkCore\net9.0\SecureExchangesSDK.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>
