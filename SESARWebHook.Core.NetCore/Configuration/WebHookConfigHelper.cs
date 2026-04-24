@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 
@@ -8,7 +9,7 @@ namespace SESARWebHook.Core.Configuration
   public static class WebHookConfigHelper
   {
     private static IConfiguration _configuration;
-    private static Dictionary<string, Dictionary<string, string>> _connectorSettingsCache = new Dictionary<string, Dictionary<string, string>>();
+    private static ConcurrentDictionary<string, Dictionary<string, string>> _connectorSettingsCache = new ConcurrentDictionary<string, Dictionary<string, string>>();
 
     public static void Initialize(IConfiguration configuration)
     {
@@ -103,32 +104,35 @@ namespace SESARWebHook.Core.Configuration
 
     public static Dictionary<string, string> GetConnectorSettings(string connectorId)
     {
-      if (_connectorSettingsCache.ContainsKey(connectorId))
+      return _connectorSettingsCache.GetOrAdd(connectorId, id =>
       {
-        return _connectorSettingsCache[connectorId];
-      }
-
-      var settings = new Dictionary<string, string>();
-
-      // 1. Lire les paramètres non-sensibles depuis appsettings.json
-      var section = _configuration?.GetSection($"Connector:{connectorId}");
-      if (section != null)
-      {
-        foreach (var child in section.GetChildren())
+        if (_connectorSettingsCache.ContainsKey(connectorId))
         {
-          settings[child.Key] = child.Value;
+          return _connectorSettingsCache[connectorId];
         }
-      }
 
-      // 2. Fusionner avec les secrets du fichier JSON chiffré
-      var secrets = SecureConfigManager.GetConnectorSecrets(connectorId);
-      foreach (var secret in secrets)
-      {
-        settings[secret.Key] = secret.Value;
-      }
+        var settings = new Dictionary<string, string>();
 
-      _connectorSettingsCache[connectorId] = settings;
-      return settings;
+        // 1. Lire les paramètres non-sensibles depuis appsettings.json
+        var section = _configuration?.GetSection($"Connector:{connectorId}");
+        if (section != null)
+        {
+          foreach (var child in section.GetChildren())
+          {
+            settings[child.Key] = child.Value;
+          }
+        }
+
+        // 2. Fusionner avec les secrets du fichier JSON chiffré
+        var secrets = SecureConfigManager.GetConnectorSecrets(connectorId);
+        foreach (var secret in secrets)
+        {
+          settings[secret.Key] = secret.Value;
+        }
+
+        _connectorSettingsCache[connectorId] = settings;
+        return settings;
+      });
     }
 
     #endregion

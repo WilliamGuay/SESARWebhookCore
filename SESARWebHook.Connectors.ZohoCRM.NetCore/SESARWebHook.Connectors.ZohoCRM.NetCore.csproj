@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net9.0-windows</TargetFramework>
     <RootNamespace>SESARWebHook.Connectors.ZohoCRM</RootNamespace>
     <AssemblyName>SESARWebHook.Connectors.ZohoCRM.NetCore</AssemblyName>
     <ImplicitUsings>disable</ImplicitUsings>

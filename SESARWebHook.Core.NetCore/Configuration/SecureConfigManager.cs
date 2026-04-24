@@ -1,6 +1,8 @@
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -65,6 +67,7 @@ namespace SESARWebHook.Core.Configuration
         }
         catch
         {
+          Trace.TraceWarning("\"FileEntropy\" value is not a valid base64 string.");
         }
       }
       return null;
