@@ -1,0 +1,90 @@
+## Visual Studio / .NET Framework
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options directory
+.vs/
+*.VisualState.xml
+
+# NuGet Packages
+packages/
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# StyleCop
+StyleCopReport.xml
+
+# Build Results of an ATL Project
+[Dd]ebugPS/
+[Rr]eleasePS/
+dlldata.c
+
+# Publish / Deploy
+*.publishsettings
+
+# NuGet
+*.nupkg
+*.snupkg
+
+# IIS / Web
+_UploadedFiles/
+_PackageTmp/
+web.config.bak
+
+# Sensitive configuration files
+connectors.secrets.json
+*.seek
+*.pfx
+*.key
+
+# Log files
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Temp files
+*~
+*.swp
+*.tmp
+
+connectors.secrets.json

@@ -1,0 +1,76 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.API.NetCore", "SESARWebHook.API.NetCore\SESARWebHook.API.NetCore.csproj", "{386D1215-9A94-4F67-689B-6BD3602456AD}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Connectors", "Connectors", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Core.NetCore", "SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj", "{6D3D8C35-4435-B547-995C-63118860B942}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Tests.NetCore", "SESARWebHook.Tests.NetCore\SESARWebHook.Tests.NetCore.csproj", "{448E3C12-3F55-9E17-DBE2-E3126AA534DD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.Dynamics.NetCore", "SESARWebHook.Connectors.Dynamics.NetCore\SESARWebHook.Connectors.Dynamics.NetCore.csproj", "{1708E079-9F15-096C-D6E9-7CEABD59F294}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.FileSystem.NetCore", "SESARWebHook.Connectors.FileSystem.NetCore\SESARWebHook.Connectors.FileSystem.NetCore.csproj", "{5BD090BE-3B80-5D47-402D-F73E49D064D2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.SharePoint.NetCore", "SESARWebHook.Connectors.SharePoint.NetCore\SESARWebHook.Connectors.SharePoint.NetCore.csproj", "{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.Template.NetCore", "SESARWebHook.Connectors.Template.NetCore\SESARWebHook.Connectors.Template.NetCore.csproj", "{2472197B-7296-9D53-3360-352E279CE79E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.ZohoCRM.NetCore", "SESARWebHook.Connectors.ZohoCRM.NetCore\SESARWebHook.Connectors.ZohoCRM.NetCore.csproj", "{7539072A-63A9-7595-4B7D-F7DFA889D58F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6D3D8C35-4435-B547-995C-63118860B942}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6D3D8C35-4435-B547-995C-63118860B942}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6D3D8C35-4435-B547-995C-63118860B942}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6D3D8C35-4435-B547-995C-63118860B942}.Release|Any CPU.Build.0 = Release|Any CPU
+		{448E3C12-3F55-9E17-DBE2-E3126AA534DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{448E3C12-3F55-9E17-DBE2-E3126AA534DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{448E3C12-3F55-9E17-DBE2-E3126AA534DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{448E3C12-3F55-9E17-DBE2-E3126AA534DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1708E079-9F15-096C-D6E9-7CEABD59F294}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1708E079-9F15-096C-D6E9-7CEABD59F294}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1708E079-9F15-096C-D6E9-7CEABD59F294}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1708E079-9F15-096C-D6E9-7CEABD59F294}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5BD090BE-3B80-5D47-402D-F73E49D064D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5BD090BE-3B80-5D47-402D-F73E49D064D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5BD090BE-3B80-5D47-402D-F73E49D064D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5BD090BE-3B80-5D47-402D-F73E49D064D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2472197B-7296-9D53-3360-352E279CE79E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2472197B-7296-9D53-3360-352E279CE79E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2472197B-7296-9D53-3360-352E279CE79E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2472197B-7296-9D53-3360-352E279CE79E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7539072A-63A9-7595-4B7D-F7DFA889D58F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{1708E079-9F15-096C-D6E9-7CEABD59F294} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{5BD090BE-3B80-5D47-402D-F73E49D064D2} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{6A4045BF-0F9F-3FC7-912B-66CCB09F48F1} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{2472197B-7296-9D53-3360-352E279CE79E} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{7539072A-63A9-7595-4B7D-F7DFA889D58F} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {70A2B731-B4BA-4430-B80E-A2821E021970}
+	EndGlobalSection
+EndGlobal
