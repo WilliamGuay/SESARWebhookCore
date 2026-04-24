@@ -96,17 +96,16 @@ namespace SESARWebHook.API
         }
         else
         {
-          var keyStatus = string.IsNullOrEmpty(key) ? "MANQUANTE" : "OK";
-          var ivStatus = string.IsNullOrEmpty(iv) ? "MANQUANT" : "OK";
-          InitializationError = $"Clés WebHook non trouvées dans connectors.secrets.json. " +
-              $"WebHookEncryptionKey={keyStatus}, WebHookEncryptionIV={ivStatus}. " +
-              $"Vérifiez que le fichier existe et contient ces clés.";
+          var keyStatus = string.IsNullOrEmpty(key) ? "MISSING" : "OK";
+          var ivStatus = string.IsNullOrEmpty(iv) ? "MISSING" : "OK";
+          InitializationError = $"No Webhook key found in connectors.secrets.json. " +
+              $"Make sure that this file exists and that the keys are present.";
           IsInitialized = false;
         }
       }
       catch (Exception ex)
       {
-        InitializationError = $"Erreur d'initialisation des secrets: {ex.GetType().Name}: {ex.Message}";
+        InitializationError = $"Secrets initialization error: {ex.GetType().Name}: {ex.Message}";
         if (ex.InnerException != null)
         {
           InitializationError += $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
