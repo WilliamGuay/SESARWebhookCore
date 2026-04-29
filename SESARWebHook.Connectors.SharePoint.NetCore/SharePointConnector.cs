@@ -1,4 +1,5 @@
 using MimeKit;
+using Newtonsoft.Json;
 using SecureExchangesSDK.Helpers;
 using SecureExchangesSDK.Models.Messenging;
 using SESARWebHook.Core.Auth;
@@ -10,8 +11,12 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml.Serialization;
 
 namespace SESARWebHook.Connectors.SharePoint
 {
@@ -36,6 +41,7 @@ namespace SESARWebHook.Connectors.SharePoint
     private const string Pattern = "[\"*:<>?/\\|]";
     private OAuth2ClientCredentialsHelper _authHelper;
     private string _siteUrl;
+    private string _kekPath;
     private byte[] _key;
     private byte[] _iv;
 
@@ -55,6 +61,7 @@ namespace SESARWebHook.Connectors.SharePoint
     public void Initialize(Dictionary<string, string> settings)
     {
       _siteUrl = settings.ContainsKey("SiteUrl") ? settings["SiteUrl"] : "";
+      _kekPath = settings.ContainsKey("KekPath") ? settings["KekPath"] : "";
 
       var keys = (settings.ContainsKey("PrivateAESKey") ? settings["PrivateAESKey"] : "").Split('_');
       _key = Convert.FromBase64String(keys[0]);
@@ -98,7 +105,7 @@ namespace SESARWebHook.Connectors.SharePoint
 
       return await _authHelper.TestConnectionAsync();
     }
-  
+
     public async Task<IntegrationResult> ProcessManifestAsync(StoreManifest manifest, WebhookContext context)
     {
       try
@@ -113,7 +120,6 @@ namespace SESARWebHook.Connectors.SharePoint
           validFolderName = Regex.Replace(validFolderName, "  +", " ");
 
           await CreateFolder(accessToken, client, uri, validFolderName);
-          await UploadEmail(client, accessToken, uri, manifest, validFolderName);
 
           if (manifest.FilesMetaData != null && manifest.FilesMetaData.Count > 0)
           {
@@ -160,110 +166,102 @@ namespace SESARWebHook.Connectors.SharePoint
       return IntegrationResult.Ok(responseContent);
     }
 
-    private async Task<IntegrationResult> UploadEmail(HttpClient client, string accessToken, Uri siteUri, StoreManifest manifest, string folderName)
-    {
-      string emailHtmlFilePath = manifest.DirectoryPath + "\\EmailSent.html";
-      bool deleteHtmlFile = false;
-
-      if (!File.Exists(emailHtmlFilePath))
-      {
-        deleteHtmlFile = true;
-        CryptoHelper.DecryptFile(emailHtmlFilePath + ".secf", emailHtmlFilePath, _key, _iv);
-      }
-
-      var message = new MimeMessage();
-      message.From.Add(new MailboxAddress(manifest.OriginalRecipientInfo.ContactInfo, manifest.OriginalRecipientInfo.ContactInfo));
-      message.Subject = manifest.OriginalRecipientInfo.Subject;
-      foreach (var r in manifest.Recipients)
-      {
-        message.To.Add(new MailboxAddress(r.Email, r.Email));
-      }
-
-      string emailHtml = File.ReadAllText(emailHtmlFilePath);
-
-      //Remove trailing HTML from message
-      var builder = new BodyBuilder();
-      builder.HtmlBody = Regex.Replace(emailHtml, @"<hr\s*\/>ORIGINAL\sHTML\sENCODED\sMESSAGE\sBELOW.*", "");
-      message.Body = builder.ToMessageBody();
-
-      string emlFilePath = manifest.DirectoryPath + "\\EmailSent.eml";
-      message.WriteTo(emlFilePath);
-
-      if (deleteHtmlFile)
-        File.Delete(emailHtmlFilePath);
-
-      await UploadFileWithUploadSession(client, accessToken, siteUri, emlFilePath, "EmailSent.eml", folderName);
-      File.Delete(emlFilePath);
-
-      return IntegrationResult.Ok("Email uploaded successfuly");
-    }
-
     private async Task<IntegrationResult> UploadFile(HttpClient client, string accessToken, Uri siteUri, StoreManifest manifest, int fileIndex, string folderName)
     {
       string filePath = manifest.FilesLocation[fileIndex].FullPath;
       string fileName = manifest.FilesMetaData[fileIndex].RealFileName;
 
-      bool deleteDecryptedFile = false;
+      byte[] fileBytes = File.ReadAllBytes(filePath);
+      byte[] enFileBytes = new byte[fileBytes.Length];
+      byte[] dek = CryptoHelper.GenerateSecureRandomByteArray(32);
+      byte[] tag = new byte[16];
+      byte[] iv = CryptoHelper.GenerateSecureRandomByteArray(12);
+      var aesGcm = new AesGcm(dek, 16);
+      aesGcm.Encrypt(iv, fileBytes, enFileBytes, tag);
 
-      if (!File.Exists(filePath))
+      byte[] enFileFullBytes = new byte[iv.Length + tag.Length + enFileBytes.Length];
+      Buffer.BlockCopy(iv, 0, enFileFullBytes, 0, iv.Length);
+      Buffer.BlockCopy(enFileBytes, 0, enFileFullBytes, iv.Length, enFileBytes.Length);
+      Buffer.BlockCopy(tag, 0, enFileFullBytes, iv.Length + enFileBytes.Length, tag.Length);
+
+      byte[] itemId = Encoding.UTF8.GetBytes(await UploadFileWithUploadSession(client, accessToken, siteUri, fileBytes, folderName));
+      byte[] kek = File.ReadAllBytes(_kekPath);
+      byte[] kchk = new byte[12];
+
+      using (var sha512 = SHA512.Create())
       {
-        deleteDecryptedFile = true;
-        CryptoHelper.DecryptFile(filePath + ".secf", filePath, _key, _iv);
+        kchk = sha512.ComputeHash(kek)[..12];
       }
 
-      await UploadFileWithUploadSession(client, accessToken, siteUri, filePath, fileName, folderName);
+      byte[] kiv = CryptoHelper.GenerateSecureRandomByteArray(12);
+      byte[] ktag = new byte[16];
+      byte[] preparedDek = new byte[dek.Length + 20];
 
-      if (deleteDecryptedFile)
-        File.Delete(filePath);
+      Buffer.BlockCopy(dek, 0, preparedDek, 0, dek.Length);
+      Buffer.BlockCopy(itemId, 0, preparedDek, dek.Length, itemId.Length);
+
+      byte[] enDek = new byte[preparedDek.Length];
+
+      var kAesGcm = new AesGcm(kek, 16);
+      kAesGcm.Encrypt(kiv, preparedDek, enDek, ktag);
+
+      byte[] header = new byte[kiv.Length + enDek.Length + ktag.Length + kchk.Length];
+      Buffer.BlockCopy(kiv, 0, header, 0, kiv.Length);
+      Buffer.BlockCopy(enDek, 0, header, kiv.Length, enDek.Length);
+      Buffer.BlockCopy(ktag, 0, header, kiv.Length + enDek.Length, ktag.Length);
+      Buffer.BlockCopy(kchk, 0, header, kiv.Length + enDek.Length + ktag.Length, kchk.Length);
+
+      string uploadHeaderRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root:/{folderName}/{fileName}:/content";
+      var content = new ByteArrayContent(header);
+      var response = await client.PutAsync(uploadHeaderRequest, content);
+      var responeContent = await response.Content.ReadAsStringAsync();
 
       return IntegrationResult.Ok("File Uploaded");
     }
 
     //Doc: https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
-    private async Task<IntegrationResult> UploadFileWithUploadSession(HttpClient client, string accessToken, Uri siteUri, string filePath, string fileName, string folderName)
+    private async Task<string> UploadFileWithUploadSession(HttpClient client, string accessToken, Uri siteUri, byte[] fileBytes, string folderName)
     {
-      if (File.Exists(filePath))
+      try
       {
         client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", accessToken);
         client.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/json"));
 
-        string validFileName = Regex.Replace(fileName, "[\"*:<>?/\\|]", " ");
-        validFileName = Regex.Replace(validFileName, "  +", " ");
+        var fileName = Guid.NewGuid().ToString();
 
-        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites{siteUri.Host}/drive/root:/{folderName}/{validFileName}:/createUploadSession";
-        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{validFileName}\" }} }}");
+        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root:/{folderName}/{fileName}:/createUploadSession";
+        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{fileName}\", \"deferCommit\": false }} }}");
         uploadSessionRequestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var response = await client.PostAsync(createUploadSessionRequest, uploadSessionRequestContent);
-        var responseContent = await response.Content.ReadFromJsonAsync<UploadSessionResponse>();
+        var responseContent = await response.Content.ReadFromJsonAsync<dynamic>();
 
         const int UPLOAD_CHUNK_SIZE = 10485760;
 
-        byte[] file = File.ReadAllBytes(filePath);
-
-        for (long i = 0; i < file.LongLength; i += UPLOAD_CHUNK_SIZE)
+        for (long i = 0; i < fileBytes[21..].LongLength; i += UPLOAD_CHUNK_SIZE)
         {
-          long maxByte = Math.Min(i + UPLOAD_CHUNK_SIZE, file.LongLength - 1);
-          var content = new ByteArrayContent(file[(int)i..(int)(maxByte + 1)]);
+          long maxByte = Math.Min(i + UPLOAD_CHUNK_SIZE, fileBytes[20..].LongLength - 1);
+          var content = new ByteArrayContent(fileBytes[((int)i + 20)..(int)(maxByte + 1)]);
           content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
-          content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{file.LongLength}");
+          content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{fileBytes[20..].LongLength}");
 
-          var responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
+          var responseUpload = await client.PutAsync(responseContent["uploadUrl"], content);
           var responseUloadContent = await responseUpload.Content.ReadAsStringAsync();
         }
 
-        return IntegrationResult.Ok("File uploaded with success");
-      }
-      return IntegrationResult.Fail("File to upload does not exist");
-    }
-  }
+        var emptyContent = new ByteArrayContent(Array.Empty<byte>());
+        emptyContent.Headers.Add("Content-Length", "0");
+        var fileCompletionRequest = await client.PostAsync(responseContent.UploadUrl, emptyContent);
+        var fileCompletionRequestResponse = await fileCompletionRequest.Content.ReadFromJsonAsync<dynamic>();
 
-  public class UploadSessionResponse
-  {
-    public string Context { get; set; }
-    public DateTime ExpirationDateTime { get; set; }
-    public string[] NextExcpectedRanges { get; set; }
-    public string UploadUrl { get; set; }
+        return fileCompletionRequestResponse.Id;
+      }
+      catch
+      {
+        throw new Exception("An error has occured while uploading file.");
+      }
+
+    }
   }
 }
