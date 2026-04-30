@@ -232,10 +232,10 @@ namespace SESARWebHook.Connectors.SharePoint
         var fileName = Guid.NewGuid().ToString();
 
         var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root:/{folderName}/{fileName}:/createUploadSession";
-        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{fileName}\", \"deferCommit\": false }} }}");
+        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{fileName}\" }} }}");
         uploadSessionRequestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var response = await client.PostAsync(createUploadSessionRequest, uploadSessionRequestContent);
-        var responseContent = await response.Content.ReadFromJsonAsync<dynamic>();
+        var responseContent = await response.Content.ReadFromJsonAsync<UploadSessionResponse>();
 
         const int UPLOAD_CHUNK_SIZE = 10485760;
 
@@ -246,7 +246,7 @@ namespace SESARWebHook.Connectors.SharePoint
           content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
           content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{fileBytes[20..].LongLength}");
 
-          var responseUpload = await client.PutAsync(responseContent["uploadUrl"], content);
+          var responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
           var responseUloadContent = await responseUpload.Content.ReadAsStringAsync();
         }
 
@@ -263,5 +263,14 @@ namespace SESARWebHook.Connectors.SharePoint
       }
 
     }
+
+    public class UploadSessionResponse
+    {
+      public string Context { get; set; }
+      public DateTime ExpirationDate { get; set; }
+      public string NextExcpectedDataTime { get; set; }
+      public string UploadUrl { get; set; }
+    }
+
   }
 }
