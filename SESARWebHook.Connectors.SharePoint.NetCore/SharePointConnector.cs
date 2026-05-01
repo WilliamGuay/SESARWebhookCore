@@ -195,7 +195,7 @@ namespace SESARWebHook.Connectors.SharePoint
 
       byte[] kiv = CryptoHelper.GenerateSecureRandomByteArray(12);
       byte[] ktag = new byte[16];
-      byte[] preparedDek = new byte[dek.Length + 20];
+      byte[] preparedDek = new byte[dek.Length + 34];
 
       Buffer.BlockCopy(dek, 0, preparedDek, 0, dek.Length);
       Buffer.BlockCopy(itemId, 0, preparedDek, dek.Length, itemId.Length);
@@ -231,7 +231,7 @@ namespace SESARWebHook.Connectors.SharePoint
 
         var fileName = Guid.NewGuid().ToString();
 
-        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root:/{folderName}/{fileName}:/createUploadSession";
+        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites{siteUri.Host}/drive/root:/{folderName}/{fileName}:/createUploadSession";
         var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{fileName}\" }} }}");
         uploadSessionRequestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
         var response = await client.PostAsync(createUploadSessionRequest, uploadSessionRequestContent);
@@ -239,21 +239,19 @@ namespace SESARWebHook.Connectors.SharePoint
 
         const int UPLOAD_CHUNK_SIZE = 10485760;
 
-        for (long i = 0; i < fileBytes[21..].LongLength; i += UPLOAD_CHUNK_SIZE)
+        HttpResponseMessage responseUpload = new HttpResponseMessage();
+
+        for (long i = 0; i < fileBytes[20..].LongLength; i += UPLOAD_CHUNK_SIZE)
         {
           long maxByte = Math.Min(i + UPLOAD_CHUNK_SIZE, fileBytes[20..].LongLength - 1);
-          var content = new ByteArrayContent(fileBytes[((int)i + 20)..(int)(maxByte + 1)]);
+          var content = new ByteArrayContent(fileBytes[((int)i + 20)..(int)(maxByte + 21)]);
           content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
           content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{fileBytes[20..].LongLength}");
 
-          var responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
-          var responseUloadContent = await responseUpload.Content.ReadAsStringAsync();
+          responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
         }
 
-        var emptyContent = new ByteArrayContent(Array.Empty<byte>());
-        emptyContent.Headers.Add("Content-Length", "0");
-        var fileCompletionRequest = await client.PostAsync(responseContent.UploadUrl, emptyContent);
-        var fileCompletionRequestResponse = await fileCompletionRequest.Content.ReadFromJsonAsync<dynamic>();
+        var fileCompletionRequestResponse = await responseUpload.Content.ReadFromJsonAsync<DriveItem>();
 
         return fileCompletionRequestResponse.Id;
       }
@@ -270,6 +268,14 @@ namespace SESARWebHook.Connectors.SharePoint
       public DateTime ExpirationDate { get; set; }
       public string NextExcpectedDataTime { get; set; }
       public string UploadUrl { get; set; }
+    }
+
+    public class DriveItem
+    {
+      public string Id { get; set; }
+      public string Name { get; set; }
+      public long Size { get; set; }
+      public object File { get; set; }
     }
 
   }
