@@ -202,6 +202,11 @@ namespace SESARWebHook.Connectors.ZohoCRM
 
       return record;
     }
+
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new NotImplementedException();
+    }
   }
 
   /// <summary>

@@ -62,5 +62,7 @@ namespace SESARWebHook.Core.Interfaces
     /// </summary>
     /// <param name="settings">Configuration settings for the connector</param>
     void Initialize(Dictionary<string, string> settings);
+
+    Task<IntegrationResult> RotateKey();
   }
 }

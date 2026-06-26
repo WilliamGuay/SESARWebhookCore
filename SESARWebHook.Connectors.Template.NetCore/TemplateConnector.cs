@@ -353,5 +353,10 @@ namespace SESARWebHook.Connectors.Template
         );
       }
     }
+
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new NotImplementedException();
+    }
   }
 }

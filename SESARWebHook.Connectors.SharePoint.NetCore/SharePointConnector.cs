@@ -1,22 +1,19 @@
-using MimeKit;
-using Newtonsoft.Json;
 using SecureExchangesSDK.Helpers;
 using SecureExchangesSDK.Models.Messenging;
 using SESARWebHook.Core.Auth;
 using SESARWebHook.Core.Interfaces;
 using SESARWebHook.Core.Models;
+using SESARLightUtils;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Xml.Serialization;
+using SESARLightUtils.StorageServiceHelpers;
 
 namespace SESARWebHook.Connectors.SharePoint
 {
@@ -44,6 +41,7 @@ namespace SESARWebHook.Connectors.SharePoint
     private string _kekPath;
     private byte[] _key;
     private byte[] _iv;
+    private SharePointServiceHelper serviceHelper;
 
     public string ConnectorId => "sharepoint";
     public string DisplayName => "SharePoint Online";
@@ -70,6 +68,8 @@ namespace SESARWebHook.Connectors.SharePoint
       var tenantId = settings.ContainsKey("TenantId") ? settings["TenantId"] : "";
       var clientId = settings.ContainsKey("ClientId") ? settings["ClientId"] : "";
       var clientSecret = settings.ContainsKey("ClientSecret") ? settings["ClientSecret"] : "";
+
+      serviceHelper = new SharePointServiceHelper(settings);
 
       if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret))
       {
@@ -184,7 +184,8 @@ namespace SESARWebHook.Connectors.SharePoint
       Buffer.BlockCopy(enFileBytes, 0, enFileFullBytes, iv.Length, enFileBytes.Length);
       Buffer.BlockCopy(tag, 0, enFileFullBytes, iv.Length + enFileBytes.Length, tag.Length);
 
-      byte[] itemId = Encoding.UTF8.GetBytes(await UploadFileWithUploadSession(client, accessToken, siteUri, fileBytes, folderName));
+      string filName = Guid.NewGuid().ToString();
+      byte[] itemId = Encoding.UTF8.GetBytes(await serviceHelper.UploadFile(enFileFullBytes[12..], fileName, folderName));
       byte[] kek = File.ReadAllBytes(_kekPath);
       byte[] kchk = new byte[12];
 
@@ -205,11 +206,12 @@ namespace SESARWebHook.Connectors.SharePoint
       var kAesGcm = new AesGcm(kek, 16);
       kAesGcm.Encrypt(kiv, preparedDek, enDek, ktag);
 
-      byte[] header = new byte[kiv.Length + enDek.Length + ktag.Length + kchk.Length];
+      byte[] header = new byte[kiv.Length + enDek.Length + ktag.Length + kchk.Length + 12];
       Buffer.BlockCopy(kiv, 0, header, 0, kiv.Length);
       Buffer.BlockCopy(enDek, 0, header, kiv.Length, enDek.Length);
       Buffer.BlockCopy(ktag, 0, header, kiv.Length + enDek.Length, ktag.Length);
       Buffer.BlockCopy(kchk, 0, header, kiv.Length + enDek.Length + ktag.Length, kchk.Length);
+      Buffer.BlockCopy(enFileFullBytes[..12], 0, header, kiv.Length + enDek.Length + ktag.Length + kchk.Length, 12);
 
       string uploadHeaderRequest = $"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/root:/{folderName}/{fileName}:/content";
       var content = new ByteArrayContent(header);
@@ -219,47 +221,9 @@ namespace SESARWebHook.Connectors.SharePoint
       return IntegrationResult.Ok("File Uploaded");
     }
 
-    //Doc: https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0
-    private async Task<string> UploadFileWithUploadSession(HttpClient client, string accessToken, Uri siteUri, byte[] fileBytes, string folderName)
+    public Task<IntegrationResult> RotateKey()
     {
-      try
-      {
-        client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", accessToken);
-        client.DefaultRequestHeaders.Accept.Add(
-            new MediaTypeWithQualityHeaderValue("application/json"));
-
-        var fileName = Guid.NewGuid().ToString();
-
-        var createUploadSessionRequest = $"https://graph.microsoft.com/v1.0/sites{siteUri.Host}/drive/root:/{folderName}/{fileName}:/createUploadSession";
-        var uploadSessionRequestContent = new StringContent($"{{ \"item\": {{ \"name\": \"{fileName}\" }} }}");
-        uploadSessionRequestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        var response = await client.PostAsync(createUploadSessionRequest, uploadSessionRequestContent);
-        var responseContent = await response.Content.ReadFromJsonAsync<UploadSessionResponse>();
-
-        const int UPLOAD_CHUNK_SIZE = 10485760;
-
-        HttpResponseMessage responseUpload = new HttpResponseMessage();
-
-        for (long i = 0; i < fileBytes[20..].LongLength; i += UPLOAD_CHUNK_SIZE)
-        {
-          long maxByte = Math.Min(i + UPLOAD_CHUNK_SIZE, fileBytes[20..].LongLength - 1);
-          var content = new ByteArrayContent(fileBytes[((int)i + 20)..(int)(maxByte + 21)]);
-          content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
-          content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{fileBytes[20..].LongLength}");
-
-          responseUpload = await client.PutAsync(responseContent.UploadUrl, content);
-        }
-
-        var fileCompletionRequestResponse = await responseUpload.Content.ReadFromJsonAsync<DriveItem>();
-
-        return fileCompletionRequestResponse.Id;
-      }
-      catch
-      {
-        throw new Exception("An error has occured while uploading file.");
-      }
-
+      throw new NotImplementedException();
     }
 
     public class UploadSessionResponse

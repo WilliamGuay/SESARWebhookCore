@@ -11,6 +11,7 @@ using SESARWebHook.Connectors.ZohoCRM;
 using SESARWebHook.Core.Configuration;
 using SESARWebHook.Core.Connectors;
 using SESARWebHook.Core.Services;
+using SESARWebHook.SESARLightUtils.StorageServiceHelpers;
 using System;
 
 namespace SESARWebHook.API
@@ -74,6 +75,7 @@ namespace SESARWebHook.API
       ConnectorRegistry.RegisterConnector<ZohoCRMConnector>();
       ConnectorRegistry.RegisterConnector<SharePointConnector>();
       ConnectorRegistry.RegisterConnector<DynamicsConnector>();
+      ConnectorRegistry.RegisterConnector<OneDriveConnector>();
 
       // Register the Generic Connector (for custom client handlers)
       GenericConnector = new GenericConnector(HandlerRegistry);

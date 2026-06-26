@@ -15,7 +15,7 @@ namespace SESARWebHook.Core.Interfaces
     /// <param name="webhookData">The encrypted webhook data from SESAR</param>
     /// <param name="connectorId">The ID of the connector to use for processing</param>
     /// <returns>Result of the processing operation</returns>
-    Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId);
+    Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, bool isRotate = false);
 
     /// <summary>
     /// Validates the webhook authentication

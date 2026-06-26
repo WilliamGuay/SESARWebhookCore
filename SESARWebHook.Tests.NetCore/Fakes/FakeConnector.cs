@@ -61,6 +61,11 @@ namespace SESARWebHook.Tests.Fakes
     {
       return Task.FromResult(TestConnectionResult);
     }
+
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new System.NotImplementedException();
+    }
   }
 
   /// <summary>

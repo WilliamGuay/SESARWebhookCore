@@ -149,5 +149,10 @@ namespace SESARWebHook.Connectors.FileSystem
         );
       }
     }
+
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new NotImplementedException();
+    }
   }
 }

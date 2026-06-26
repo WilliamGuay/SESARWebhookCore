@@ -187,6 +187,11 @@ namespace SESARWebHook.Core.Connectors
     /// </summary>
     public IEnumerable<HandlerInfo> GetHandlerInfos() => _handlerRegistry.GetHandlerInfos();
 
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new NotImplementedException();
+    }
+
     #endregion
   }
 }

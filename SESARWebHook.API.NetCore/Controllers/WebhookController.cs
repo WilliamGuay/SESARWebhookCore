@@ -41,6 +41,18 @@ namespace SESARWebHook.API.Controllers
       return await ProcessWithConnector(request.Args, defaultConnector);
     }
 
+    [HttpPost("rotate")]
+    public async Task<IActionResult> ProcessRotateWebhook([FromBody] SesarWebHookRequest request)
+    {
+      if (request?.Args == null)
+      {
+        return BadRequest("Invalid webhook data. Expected format: { \"args\": { \"HashKey\": \"...\", \"CryptedObject\": \"...\" } }");
+      }
+
+      var defaultConnector = _appConfig["DefaultConnectorId"] ?? "filesystem";
+      return await ProcessWithConnector(request.Args, defaultConnector, true);
+    }
+
     [HttpPost("handler/{handlerId}")]
     public async Task<IActionResult> ProcessWebhookWithHandler(
         string handlerId,
@@ -283,7 +295,7 @@ namespace SESARWebHook.API.Controllers
       });
     }
 
-    private async Task<IActionResult> ProcessWithConnector(SesarWebHook webhookData, string connectorId)
+    private async Task<IActionResult> ProcessWithConnector(SesarWebHook webhookData, string connectorId, bool isRotate = false)
     {
       var processor = _config.WebhookProcessor;
       if (processor == null)
@@ -299,7 +311,7 @@ namespace SESARWebHook.API.Controllers
         return NotFound();
       }
 
-      var result = await processor.ProcessWebhookAsync(webhookData, connectorId);
+      var result = await processor.ProcessWebhookAsync(webhookData, connectorId, isRotate);
 
       if (result.Success)
       {

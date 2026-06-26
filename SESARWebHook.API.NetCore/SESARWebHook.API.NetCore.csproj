@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SESARWebHook.Connectors.Dynamics.NetCore\SESARWebHook.Connectors.Dynamics.NetCore.csproj" />
     <ProjectReference Include="..\SESARWebHook.Connectors.FileSystem.NetCore\SESARWebHook.Connectors.FileSystem.NetCore.csproj" />
+    <ProjectReference Include="..\SESARWebHook.Connectors.OneDrive.NetCore\SESARWebHook.Connectors.OneDrive.NetCore.csproj" />
     <ProjectReference Include="..\SESARWebHook.Connectors.SharePoint.NetCore\SESARWebHook.Connectors.SharePoint.NetCore.csproj" />
     <ProjectReference Include="..\SESARWebHook.Connectors.Template.NetCore\SESARWebHook.Connectors.Template.NetCore.csproj" />
     <ProjectReference Include="..\SESARWebHook.Connectors.ZohoCRM.NetCore\SESARWebHook.Connectors.ZohoCRM.NetCore.csproj" />

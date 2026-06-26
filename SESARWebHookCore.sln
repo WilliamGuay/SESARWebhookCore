@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.API.NetCore", "SESARWebHook.API.NetCore\SESARWebHook.API.NetCore.csproj", "{386D1215-9A94-4F67-689B-6BD3602456AD}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Connectors", "Connectors", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Core.NetCore", "SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj", "{6D3D8C35-4435-B547-995C-63118860B942}"
@@ -23,16 +21,18 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.Zoh
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.Connectors.OneDrive.NetCore", "SESARWebHook.Connectors.OneDrive.NetCore\SESARWebHook.Connectors.OneDrive.NetCore.csproj", "{9AF7A524-72AA-D978-2818-1AD35433ACDE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.SESARLightUtils", "SESARWebHook.SESARLightUtils\SESARWebHook.SESARLightUtils.csproj", "{A375849C-59A9-0715-45BF-100662930314}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.API.NetCore", "SESARWebHook.API.NetCore\SESARWebHook.API.NetCore.csproj", "{386D1215-9A94-4F67-689B-6BD3602456AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DemoOneDrive", "DemoOneDrive\DemoOneDrive.csproj", "{BC33CEC8-AA37-493A-923C-5FE4BE444E71}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6D3D8C35-4435-B547-995C-63118860B942}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6D3D8C35-4435-B547-995C-63118860B942}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D3D8C35-4435-B547-995C-63118860B942}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -65,6 +65,18 @@ Global
 		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9AF7A524-72AA-D978-2818-1AD35433ACDE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A375849C-59A9-0715-45BF-100662930314}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A375849C-59A9-0715-45BF-100662930314}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A375849C-59A9-0715-45BF-100662930314}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A375849C-59A9-0715-45BF-100662930314}.Release|Any CPU.Build.0 = Release|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC33CEC8-AA37-493A-923C-5FE4BE444E71}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC33CEC8-AA37-493A-923C-5FE4BE444E71}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC33CEC8-AA37-493A-923C-5FE4BE444E71}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC33CEC8-AA37-493A-923C-5FE4BE444E71}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

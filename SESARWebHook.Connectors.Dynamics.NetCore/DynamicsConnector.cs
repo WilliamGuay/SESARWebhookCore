@@ -210,5 +210,10 @@ namespace SESARWebHook.Connectors.Dynamics
 
       return record;
     }
+
+    public Task<IntegrationResult> RotateKey()
+    {
+      throw new NotImplementedException();
+    }
   }
 }
