@@ -14,5 +14,9 @@
 		<ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <InternalsVisibleTo Include="SESARWebHook.SESARLightUtils.UnitTests" />
+	</ItemGroup>
+
 
 </Project>

@@ -2,14 +2,17 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using SESARWebHook.Connectors.Dynamics;
 using SESARWebHook.Connectors.FileSystem;
+using SESARWebHook.Connectors.OneDrive;
 using SESARWebHook.Connectors.SharePoint;
 using SESARWebHook.Connectors.ZohoCRM;
 using SESARWebHook.Core.Configuration;
 using SESARWebHook.Core.Connectors;
+using SESARWebHook.Core.Interfaces;
 using SESARWebHook.Core.Services;
 using SESARWebHook.SESARLightUtils.StorageServiceHelpers;
 using System;
@@ -20,39 +23,73 @@ namespace SESARWebHook.API
   {
     public static void Main(string[] args)
     {
-      var builder = WebApplication.CreateBuilder(args);
-
-      // Configure JSON serializer to match SESAR's format
-      builder.Services.AddControllers()
-          .AddNewtonsoftJson(options =>
-          {
-            options.SerializerSettings.ContractResolver = new DefaultContractResolver();
-            options.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;
-          });
-
-      // Initialize configuration helper
-      WebHookConfigHelper.Initialize(builder.Configuration);
-
-      // Initialize connectors
-      var startup = new StartupConfig();
-      startup.InitializeConnectors();
-
-      // Register singletons for DI
-      builder.Services.AddSingleton(startup.ConnectorRegistry);
-      builder.Services.AddSingleton(startup.HandlerRegistry);
-      builder.Services.AddSingleton(startup.GenericConnector);
-      if (startup.WebhookProcessor != null)
+      try
       {
-        builder.Services.AddSingleton(startup.WebhookProcessor);
+        var builder = WebApplication.CreateBuilder(args);
+
+        // Configure JSON serializer to match SESAR's format
+        builder.Services.AddControllers()
+            .AddNewtonsoftJson(options =>
+            {
+              options.SerializerSettings.ContractResolver = new DefaultContractResolver();
+              options.SerializerSettings.NullValueHandling = NullValueHandling.Ignore;
+            });
+
+        // Add logging
+        builder.Services.AddLogging(config =>
+        {
+          config.AddConsole();
+          config.AddDebug();
+          config.SetMinimumLevel(LogLevel.Debug);
+        });
+
+        // Initialize configuration helper
+        WebHookConfigHelper.Initialize(builder.Configuration);
+
+        // Initialize connectors
+        var startup = new StartupConfig();
+        startup.InitializeConnectors();
+
+        // Register singletons for DI
+        builder.Services.AddSingleton(startup.ConnectorRegistry);
+        builder.Services.AddSingleton(startup.HandlerRegistry);
+        builder.Services.AddSingleton(startup.GenericConnector);
+        if (startup.WebhookProcessor != null)
+        {
+          builder.Services.AddSingleton(startup.WebhookProcessor);
+        }
+        builder.Services.AddSingleton(startup);
+
+        var app = builder.Build();
+
+        // Log startup status
+        var logger = app.Services.GetRequiredService<ILogger<Program>>();
+        if (startup.IsInitialized)
+        {
+          logger.LogInformation("Application initialized successfully");
+        }
+        else
+        {
+          logger.LogWarning($"Application initialization warning: {startup.InitializationError}");
+        }
+
+        app.UseHttpsRedirection();
+        app.MapControllers();
+
+        app.Run();
       }
-      builder.Services.AddSingleton(startup);
-
-      var app = builder.Build();
-
-      app.UseHttpsRedirection();
-      app.MapControllers();
-
-      app.Run();
+      catch (Exception ex)
+      {
+        Console.Error.WriteLine($"Fatal error during application startup: {ex.GetType().Name}");
+        Console.Error.WriteLine($"Message: {ex.Message}");
+        Console.Error.WriteLine($"Stack Trace: {ex.StackTrace}");
+        if (ex.InnerException != null)
+        {
+          Console.Error.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+          Console.Error.WriteLine($"Inner Stack Trace: {ex.InnerException.StackTrace}");
+        }
+        Environment.Exit(1);
+      }
     }
   }
 
@@ -67,65 +104,126 @@ namespace SESARWebHook.API
 
     public void InitializeConnectors()
     {
-      ConnectorRegistry = new ConnectorRegistry();
-      HandlerRegistry = new HandlerRegistry();
-
-      // Register all available built-in connectors
-      ConnectorRegistry.RegisterConnector<FileSystemConnector>();
-      ConnectorRegistry.RegisterConnector<ZohoCRMConnector>();
-      ConnectorRegistry.RegisterConnector<SharePointConnector>();
-      ConnectorRegistry.RegisterConnector<DynamicsConnector>();
-      ConnectorRegistry.RegisterConnector<OneDriveConnector>();
-
-      // Register the Generic Connector (for custom client handlers)
-      GenericConnector = new GenericConnector(HandlerRegistry);
-      ConnectorRegistry.RegisterConnector("generic", typeof(GenericConnector));
-      ConnectorRegistry.PreCacheConnectorInstance("generic", GenericConnector);
-
-      // Scan for custom handler DLLs in the /Handlers/ folder
-      var handlersPath = WebHookConfigHelper.HandlersPath;
-      HandlerRegistry.ScanForHandlers(handlersPath);
-
       try
       {
-        // Initialize the webhook processor with protected keys
-        var key = WebHookConfigHelper.WebHookKey;
-        var iv = WebHookConfigHelper.WebHookIV;
+        Console.WriteLine("Starting connector initialization...");
 
-        if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(iv))
+        ConnectorRegistry = new ConnectorRegistry();
+        HandlerRegistry = new HandlerRegistry();
+
+        Console.WriteLine("Registering connectors...");
+
+        // Register all available built-in connectors
+        ConnectorRegistry.RegisterConnector<FileSystemConnector>();
+        ConnectorRegistry.RegisterConnector<ZohoCRMConnector>();
+        ConnectorRegistry.RegisterConnector<SharePointConnector>();
+        ConnectorRegistry.RegisterConnector<DynamicsConnector>();
+        ConnectorRegistry.RegisterConnector<OneDriveConnector>();
+
+        Console.WriteLine("Registering generic connector...");
+
+        // Register the Generic Connector (for custom client handlers)
+        GenericConnector = new GenericConnector(HandlerRegistry);
+        ConnectorRegistry.RegisterConnector("generic", typeof(GenericConnector));
+        ConnectorRegistry.PreCacheConnectorInstance("generic", GenericConnector);
+
+        Console.WriteLine("Scanning for custom handlers...");
+
+        // Scan for custom handler DLLs in the /Handlers/ folder
+        var handlersPath = WebHookConfigHelper.HandlersPath;
+        HandlerRegistry.ScanForHandlers(handlersPath);
+
+        Console.WriteLine("Initializing connector settings...");
+
+        // Initialize all registered connectors with their settings
+        try
         {
-          WebhookProcessor = new WebhookProcessor(ConnectorRegistry, key, iv);
-          IsInitialized = true;
+          var connectorIds = new[] { "filesystem", "zohocrm", "sharepoint", "dynamics", "onedrive", "generic" };
+          foreach (var connectorId in connectorIds)
+          {
+            try
+            {
+              Console.WriteLine($"  Initializing connector: {connectorId}");
+              var connectorSettings = GetConnectorSettings(connectorId);
+              if (connectorSettings != null && connectorSettings.Count > 0)
+              {
+                var connectorObj = ConnectorRegistry.GetConnectorInstance(connectorId);
+                if (connectorObj is IIntegrationConnector connector)
+                {
+                  connector.Initialize(connectorSettings);
+                  Console.WriteLine($"  ✓ Connector '{connectorId}' initialized successfully");
+                }
+                else
+                {
+                  Console.WriteLine($"  ⚠ Connector '{connectorId}' does not implement IIntegrationConnector");
+                }
+              }
+              else
+              {
+                Console.WriteLine($"  ℹ No settings found for connector '{connectorId}'");
+              }
+            }
+            catch (Exception ex)
+            {
+              Console.Error.WriteLine($"  ✗ Failed to initialize connector '{connectorId}': {ex.GetType().Name}: {ex.Message}");
+              if (ex.InnerException != null)
+              {
+                Console.Error.WriteLine($"    Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+              }
+            }
+          }
         }
-        else
+        catch (Exception ex)
         {
-          var keyStatus = string.IsNullOrEmpty(key) ? "MANQUANTE" : "OK";
-          var ivStatus = string.IsNullOrEmpty(iv) ? "MANQUANT" : "OK";
-          InitializationError = $"Clés WebHook non trouvées dans connectors.secrets.json. " +
-              $"WebHookEncryptionKey={keyStatus}, WebHookEncryptionIV={ivStatus}. " +
-              $"Vérifiez que le fichier existe et contient ces clés.";
+          Console.Error.WriteLine($"Error during connector initialization loop: {ex.GetType().Name}: {ex.Message}");
+        }
+
+        Console.WriteLine("Initializing webhook processor...");
+
+        try
+        {
+          // Initialize the webhook processor with protected keys
+          var key = WebHookConfigHelper.WebHookKey;
+          var iv = WebHookConfigHelper.WebHookIV;
+
+          if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(iv))
+          {
+            WebhookProcessor = new WebhookProcessor(ConnectorRegistry, key, iv);
+            IsInitialized = true;
+            Console.WriteLine("✓ Application initialization completed successfully");
+          }
+          else
+          {
+            var keyStatus = string.IsNullOrEmpty(key) ? "MISSING" : "OK";
+            var ivStatus = string.IsNullOrEmpty(iv) ? "MISSING" : "OK";
+            InitializationError = $"WebHook keys not found in connectors.secrets.json. " +
+                $"WebHookEncryptionKey={keyStatus}, WebHookEncryptionIV={ivStatus}. " +
+                $"Verify that the file exists and contains these keys.";
+            IsInitialized = false;
+            Console.Error.WriteLine($"✗ {InitializationError}");
+          }
+        }
+        catch (Exception ex)
+        {
+          InitializationError = $"Error during secret initialization: {ex.GetType().Name}: {ex.Message}";
+          if (ex.InnerException != null)
+          {
+            InitializationError += $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
+          }
           IsInitialized = false;
+          Console.Error.WriteLine($"✗ {InitializationError}");
         }
       }
       catch (Exception ex)
       {
-        InitializationError = $"Erreur d'initialisation des secrets: {ex.GetType().Name}: {ex.Message}";
+        InitializationError = $"Fatal error during connector initialization: {ex.GetType().Name}: {ex.Message}";
         if (ex.InnerException != null)
         {
           InitializationError += $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
         }
         IsInitialized = false;
-      }
-
-      // Initialize the Generic Connector with its settings
-      try
-      {
-        var genericSettings = GetConnectorSettings("generic");
-        GenericConnector.Initialize(genericSettings);
-      }
-      catch (Exception ex)
-      {
-        System.Diagnostics.Trace.TraceWarning($"GenericConnector initialization warning: {ex.Message}");
+        Console.Error.WriteLine($"✗ {InitializationError}");
+        throw;
       }
     }
 

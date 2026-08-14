@@ -25,5 +25,15 @@ namespace SESARWebhook.SESARLightUtils.StorageServiceHelpers
       Buffer.BlockCopy(tag, 0, assembledBytes, nonce.Length + cypherText.Length, tag.Length);
       return assembledBytes;
     }
+
+    public static byte[] DecryptBytes(byte[] encryptedData, byte[] key)
+    {
+      using (var aesGcm = new AesGcm(key, Constants.TAG_SIZE_IN_BYTES))
+      {
+        byte[] decryptedData = new byte[encryptedData.Length - Constants.IV_SIZE_IN_BYTES - Constants.TAG_SIZE_IN_BYTES];
+        aesGcm.Decrypt(encryptedData[..Constants.IV_SIZE_IN_BYTES], encryptedData[Constants.IV_SIZE_IN_BYTES..^Constants.TAG_SIZE_IN_BYTES], encryptedData[^Constants.TAG_SIZE_IN_BYTES..], decryptedData);
+        return decryptedData;
+      }
+    }
   }
 }

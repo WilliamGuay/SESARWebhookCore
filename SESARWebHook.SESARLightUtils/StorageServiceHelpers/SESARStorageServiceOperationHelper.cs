@@ -14,6 +14,9 @@ namespace SESARLightUtils.StorageServiceHelpers
      */
     public abstract Task<SEDecryptedSecureFile> DownloadFile(SEDecryptedSecureFileHeader header);
     public abstract Task<bool> RotateHeaderKey(string filePath, byte[] oldKek, byte[] newKek);
+    public abstract Task<byte[]> GetKek(string userKey);
+    public abstract Task<IntegrationResult> GenerateAndUploadKek(string userKey);
+    public abstract Task<List<string>> GetAllHeadersPaths();
 
     protected abstract Task Authenticate();
 

@@ -14,28 +14,27 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Reflection.Metadata;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace SESARWebHook.Connectors.SharePoint
+namespace SESARWebHook.Connectors.OneDrive
 {
   /// <summary>
-  /// Connector for SharePoint Online integration.
+  /// Connector for OneDrive Online integration.
   /// Uploads files and creates folders SESAR manifests.
   ///
   /// EXEMPLE DE CONFIGURATION (connectors.secrets.json):
   /// {
-  ///   "sharepoint": {
+  ///   "onedrive": {
   ///     "TenantId": "your-tenant-id",
   ///     "ClientId": "your-client-id",
   ///     "ClientSecret": "your-client-secret",
-  ///     "SiteUrl": "https://yourtenant.sharepoint.com/sites/yoursite",
-  ///     "DocumentLibrary": "Documents",
-  ///     "ListName": "SESAR Exchanges"
+  ///     "OneDriveUserEmail": "user@organization.onmicrosoft.com",
+  ///     "PrivateAESKey": "base64key_base64iv",
+  ///     "UserKey": "base64userkey"
   ///   }
   /// }
   /// </summary>
@@ -43,7 +42,7 @@ namespace SESARWebHook.Connectors.SharePoint
   {
     private const string Pattern = "[\"*:<>?/\\|]";
     private OAuth2ClientCredentialsHelper _authHelper;
-    private string _kekPath;
+    private string _userKey;
     private SESARStorageServicesOperationHelper serviceHelper;
     private string _oneDriveUserEmail;
     private byte[] _key;
@@ -56,37 +55,67 @@ namespace SESARWebHook.Connectors.SharePoint
 
     public IEnumerable<string> RequiredConfigurationKeys => new[]
     {
-            "SiteUrl",
-            "ClientId",
-            "ClientSecret",
-            "TenantId"
-        };
+      "TenantId",
+      "ClientId",
+      "ClientSecret",
+      "OneDriveUserEmail"
+    };
 
     public void Initialize(Dictionary<string, string> settings)
     {
-      _kekPath = settings.ContainsKey("KekPath") ? settings["KekPath"] : "";
-      _oneDriveUserEmail = settings.ContainsKey("OneDriveUserEmail") ? settings["OneDriveUserEmail"] : "";
-
-      var keys = (settings.ContainsKey("PrivateAESKey") ? settings["PrivateAESKey"] : "").Split('_');
-      _key = Convert.FromBase64String(keys[0]);
-      _iv = Convert.FromBase64String(keys[1]);
-
-      var tenantId = settings.ContainsKey("TenantId") ? settings["TenantId"] : "";
-      var clientId = settings.ContainsKey("ClientId") ? settings["ClientId"] : "";
-      var clientSecret = settings.ContainsKey("ClientSecret") ? settings["ClientSecret"] : "";
-
-      serviceHelper = new OneDriveServiceHelper(settings);
-
-      if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret))
+      try
       {
-        // Utiliser le helper OAuth2 du Core
-        _authHelper = OAuth2ClientCredentialsHelper.ForSharePoint(
-            tenantId,
-            clientId,
-            clientSecret
-        );
-      }
+        _userKey = settings.ContainsKey("UserKey") ? settings["UserKey"] : "";
+        _oneDriveUserEmail = settings.ContainsKey("OneDriveUserEmail") ? settings["OneDriveUserEmail"] : "";
 
+        // Parse the PrivateAESKey in format "base64key_base64iv"
+        var privateAesKey = settings.ContainsKey("PrivateAESKey") ? settings["PrivateAESKey"] : "";
+        if (!string.IsNullOrEmpty(privateAesKey))
+        {
+          var keys = privateAesKey.Split('_');
+          if (keys.Length == 2 && !string.IsNullOrEmpty(keys[0]) && !string.IsNullOrEmpty(keys[1]))
+          {
+            try
+            {
+              _key = Convert.FromBase64String(keys[0]);
+              _iv = Convert.FromBase64String(keys[1]);
+            }
+            catch (FormatException ex)
+            {
+              throw new InvalidOperationException("PrivateAESKey must be in format 'base64key_base64iv' with valid base64 strings", ex);
+            }
+          }
+          else
+          {
+            throw new InvalidOperationException("PrivateAESKey must be in format 'base64key_base64iv' separated by underscore");
+          }
+        }
+
+        var tenantId = settings.ContainsKey("TenantId") ? settings["TenantId"] : "";
+        var clientId = settings.ContainsKey("ClientId") ? settings["ClientId"] : "";
+        var clientSecret = settings.ContainsKey("ClientSecret") ? settings["ClientSecret"] : "";
+
+        if (!string.IsNullOrEmpty(tenantId) && !string.IsNullOrEmpty(clientId) && !string.IsNullOrEmpty(clientSecret))
+        {
+          // Use OAuth2 helper for OneDrive
+          _authHelper = OAuth2ClientCredentialsHelper.ForOneDrive(
+              tenantId,
+              clientId,
+              clientSecret
+          );
+        }
+        else
+        {
+          throw new InvalidOperationException("OneDrive authentication credentials (TenantId, ClientId, ClientSecret) are missing or empty");
+        }
+
+        // Initialize service helper - this might throw if settings are invalid
+        serviceHelper = new OneDriveServiceHelper(settings);
+      }
+      catch (Exception ex)
+      {
+        throw new InvalidOperationException($"Failed to initialize OneDriveConnector: {ex.Message}", ex);
+      }
     }
 
     public async Task<bool> ValidateConfigurationAsync(Dictionary<string, string> settings)
@@ -116,6 +145,24 @@ namespace SESARWebHook.Connectors.SharePoint
     {
       try
       {
+        if (_authHelper == null)
+        {
+          return IntegrationResult.Fail(
+              "OneDrive authentication not configured",
+              "OAuth2ClientCredentialsHelper is null. Check that TenantId, ClientId, and ClientSecret are properly configured.",
+              ConnectorId
+          );
+        }
+
+        if (serviceHelper == null)
+        {
+          return IntegrationResult.Fail(
+              "OneDrive service helper not initialized",
+              "ServiceHelper is null. Check that OneDriveServiceHelper can be instantiated with the provided settings.",
+              ConnectorId
+          );
+        }
+
         var accessToken = await _authHelper.GetAccessTokenAsync();
 
         using (var client = new HttpClient())
@@ -138,7 +185,7 @@ namespace SESARWebHook.Connectors.SharePoint
       catch (OAuth2Exception ex)
       {
         return IntegrationResult.Fail(
-            "SharePoint authentication failed",
+            "OneDrive authentication failed",
             ex.ToString(),
             ConnectorId
         );
@@ -146,7 +193,7 @@ namespace SESARWebHook.Connectors.SharePoint
       catch (Exception ex)
       {
         return IntegrationResult.Fail(
-            "Failed to upload to SharePoint",
+            "Failed to upload to OneDrive",
             ex.ToString(),
             ConnectorId
         );
@@ -201,6 +248,7 @@ namespace SESARWebHook.Connectors.SharePoint
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(manifest.OriginalRecipientInfo.ContactInfo, manifest.OriginalRecipientInfo.ContactInfo));
         message.Subject = manifest.OriginalRecipientInfo.Subject;
+        message.Date = manifest.OriginalRecipientInfo.CreateOn;
         foreach (var r in manifest.Recipients)
         {
           message.To.Add(new MailboxAddress(r.Email, r.Email));
@@ -248,7 +296,7 @@ namespace SESARWebHook.Connectors.SharePoint
       byte[] enFileFullBytes = SESARCryptoHelper.EncryptBytes(fileBytes, dek);
 
       byte[] itemId = Encoding.UTF8.GetBytes($"{{ \"ids\": {{ \"OneDrive\": \"{await serviceHelper.UploadFile(enFileFullBytes[12..], fileName + ".secd", folderName, !isEmail)}\" }} }}");
-      byte[] kek = File.ReadAllBytes(_kekPath);
+      byte[] kek = await serviceHelper.GetKek(_userKey);
       byte[] kchk = new byte[12];
 
       using (var sha512 = SHA512.Create())
@@ -284,51 +332,23 @@ namespace SESARWebHook.Connectors.SharePoint
       return IntegrationResult.Ok("File Uploaded");
     }
 
-    public async Task<IntegrationResult> RotateKey()
+    public async Task RotateKey()
     {
-      string accessToken = await _authHelper.GetAccessTokenAsync();
-
       byte[] newKek = CryptoHelper.GenerateSecureRandomByteArray(32);
-      byte[] aes = CryptoHelper.GenerateSecureRandomByteArray(32);
-      byte[] iv = CryptoHelper.GenerateSecureRandomByteArray(12);
-      string CSU = Convert.ToBase64String(aes) + "_" + Convert.ToBase64String(iv);
 
-      using (var client = new HttpClient())
+      byte[] oldKek = await serviceHelper.GetKek(_userKey);
+
+      List<string> filesToRotate = await serviceHelper.GetAllHeadersPaths();
+
+      filesToRotate.ForEach(file =>
       {
-        client.DefaultRequestHeaders.Authorization =
-              new AuthenticationHeaderValue("Bearer", accessToken);
-        client.DefaultRequestHeaders.Accept.Add(
-            new MediaTypeWithQualityHeaderValue("application/json"));
+        serviceHelper.RotateHeaderKey(file, oldKek, newKek);
+      });
+    }
 
-        string folderId;
-
-        string listItemsInFolderRequest = $"https://graph.microsoft.com/v1.0/users/wguay@secure-exchanges.info/drive/root:/SESAR:/search(q='')";
-
-        while (!string.IsNullOrEmpty(listItemsInFolderRequest))
-        {
-          var response = await client.GetAsync(listItemsInFolderRequest);
-          response.EnsureSuccessStatusCode();
-          var responseContent = response.Content.ReadAsStringAsync();
-
-          using (var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
-          {
-            foreach (var item in doc.RootElement.GetProperty("value").EnumerateArray())
-            {
-              var driveItem = new DriveItem(item);
-              if (Regex.Match(driveItem.Name, @".secd$", RegexOptions.IgnoreCase).Success)
-              {
-                continue;
-              }
-
-              await serviceHelper.RotateHeaderKey($"MTG Dump/{driveItem.Name}", File.ReadAllBytes(_kekPath), newKek);
-            }
-
-            listItemsInFolderRequest = doc.RootElement.TryGetProperty("@odata.nextLink", out var next) ? next.GetString() : null;
-          }
-        }
-
-        return IntegrationResult.Ok();
-      }
+    Task<IntegrationResult> IIntegrationConnector.RotateKey()
+    {
+      throw new NotImplementedException();
     }
 
     public class UploadSessionResponse

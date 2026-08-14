@@ -132,5 +132,10 @@ namespace SESARWebHook.Core.Services
     {
       _connectorInstances.Clear();
     }
+
+    public object GetConnectorInstance(string connectorId)
+    {
+      throw new NotImplementedException();
+    }
   }
 }
