@@ -212,19 +212,19 @@ namespace SESARWebHook.Connectors.OneDrive
 
       string dayFolderName = manifest.DirectoryPath.Replace("\\" + manifest.OriginalRecipientInfo.Subject, "");
 
-      var createSESARFolderRequest = $"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root/children";
+      var createSESARFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root/children");
       var SESARContent = new StringContent($"{{ \"name\": \"SESAR\", \"folder\": {{}} }}");
       SESARContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
       var SESARCreateReponse = await client.PostAsync(createSESARFolderRequest, SESARContent);
 
-      var createDayFolderRequest = $"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR:/children";
+      var createDayFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR:/children");
       var dayFolderContent = new StringContent($"{{ \"name\": \"{dayFolderName}\", \"folder\": {{}} }}");
       dayFolderContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
       var dayFolderCreateReponse = await client.PostAsync(createSESARFolderRequest, SESARContent);
 
-      var createFolderRequest = $"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR/{dayFolderName}:/children";
+      var createFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR/{dayFolderName}:/children");
       var content = new StringContent($"{{ \"name\": \"{folderName}\", \"folder\": {{}} }}");
       content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
@@ -286,51 +286,58 @@ namespace SESARWebHook.Connectors.OneDrive
     {
       bool deleteFile = false;
 
-      if (!isEmail)
+      try
       {
-        string encryptedFilePath = filePath + ".secf";
-        CryptoHelper.DecryptFile(encryptedFilePath, filePath, _key, _iv);
-        deleteFile = true;
-      }
-      byte[] fileBytes = File.ReadAllBytes(filePath);
-      if (deleteFile) { File.Delete(filePath); }
-      byte[] dek = CryptoHelper.GenerateSecureRandomByteArray(32);
-      byte[] enFileFullBytes = SESARCryptoHelper.EncryptBytes(fileBytes, dek);
+        if (!isEmail)
+        {
+          string encryptedFilePath = filePath + ".secf";
+          CryptoHelper.DecryptFile(encryptedFilePath, filePath, _key, _iv);
+          deleteFile = true;
+        }
+        byte[] fileBytes = File.ReadAllBytes(filePath);
+        if (deleteFile) { File.Delete(filePath); }
+        byte[] dek = CryptoHelper.GenerateSecureRandomByteArray(32);
+        byte[] enFileFullBytes = SESARCryptoHelper.EncryptBytes(fileBytes, dek);
 
-      byte[] itemId = Encoding.UTF8.GetBytes($"{{ \"ids\": {{ \"OneDrive\": \"{await serviceHelper.UploadFile(enFileFullBytes[12..], fileName + ".secd", folderName, !isEmail)}\" }} }}");
-      byte[] kek = await serviceHelper.GetKek(_userKey);
-      byte[] kchk = new byte[12];
+        byte[] itemId = Encoding.UTF8.GetBytes($"{{ \"ids\": {{ \"OneDrive\": \"{await serviceHelper.UploadFile(enFileFullBytes[12..], fileName + ".secd", folderName, !isEmail)}\" }} }}");
+        byte[] kek = await serviceHelper.GetKek(_userKey);
+        byte[] kchk = new byte[12];
 
-      using (var sha512 = SHA512.Create())
+        using (var sha512 = SHA512.Create())
+        {
+          kchk = sha512.ComputeHash(kek)[..12];
+        }
+
+        byte[] kiv = CryptoHelper.GenerateSecureRandomByteArray(12);
+        byte[] ktag = new byte[16];
+        byte[] preparedDek = new byte[dek.Length + itemId.Length];
+
+        Buffer.BlockCopy(dek, 0, preparedDek, 0, dek.Length);
+        Buffer.BlockCopy(itemId, 0, preparedDek, dek.Length, itemId.Length);
+
+        byte[] paramsSize = new byte[Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE];
+        BinaryPrimitives.WriteInt64LittleEndian(paramsSize, itemId.LongLength);
+
+        byte[] enDek = new byte[preparedDek.Length];
+
+        var kAesGcm = new AesGcm(kek, 16);
+        kAesGcm.Encrypt(kiv, preparedDek, enDek, ktag);
+
+        byte[] header = new byte[Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length + kchk.Length + 12];
+        Buffer.BlockCopy(paramsSize, 0, header, 0, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE);
+        Buffer.BlockCopy(kiv, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE, kiv.Length);
+        Buffer.BlockCopy(enDek, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length, enDek.Length);
+        Buffer.BlockCopy(ktag, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length, ktag.Length);
+        Buffer.BlockCopy(kchk, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length, kchk.Length);
+        Buffer.BlockCopy(enFileFullBytes[..12], 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length + kchk.Length, 12);
+
+        await serviceHelper.UploadFile(header, fileName + ".sech", folderName);
+      } catch (Exception ex)
       {
-        kchk = sha512.ComputeHash(kek)[..12];
+        if (File.Exists(filePath + ".secf")){
+          File.Delete(filePath + ".secf");
+        }
       }
-
-      byte[] kiv = CryptoHelper.GenerateSecureRandomByteArray(12);
-      byte[] ktag = new byte[16];
-      byte[] preparedDek = new byte[dek.Length + itemId.Length];
-
-      Buffer.BlockCopy(dek, 0, preparedDek, 0, dek.Length);
-      Buffer.BlockCopy(itemId, 0, preparedDek, dek.Length, itemId.Length);
-
-      byte[] paramsSize = new byte[Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE];
-      BinaryPrimitives.WriteInt64LittleEndian(paramsSize, itemId.LongLength);
-
-      byte[] enDek = new byte[preparedDek.Length];
-
-      var kAesGcm = new AesGcm(kek, 16);
-      kAesGcm.Encrypt(kiv, preparedDek, enDek, ktag);
-
-      byte[] header = new byte[Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length + kchk.Length + 12];
-      Buffer.BlockCopy(paramsSize, 0, header, 0, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE);
-      Buffer.BlockCopy(kiv, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE, kiv.Length);
-      Buffer.BlockCopy(enDek, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length, enDek.Length);
-      Buffer.BlockCopy(ktag, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length, ktag.Length);
-      Buffer.BlockCopy(kchk, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length, kchk.Length);
-      Buffer.BlockCopy(enFileFullBytes[..12], 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length + kchk.Length, 12);
-
-      await serviceHelper.UploadFile(header, fileName + ".sech", folderName);
-
       return IntegrationResult.Ok("File Uploaded");
     }
 

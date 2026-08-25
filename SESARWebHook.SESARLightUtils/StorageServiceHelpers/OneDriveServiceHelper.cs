@@ -165,7 +165,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
 
         for (long i = 0; i < fileBytes.LongLength; i += Constants.UPLOAD_CHUNK_SIZE)
         {
-          long maxByte = Math.Min(i + Constants.UPLOAD_CHUNK_SIZE, fileBytes.LongLength - 1);
+          long maxByte = Math.Min(i + Constants.UPLOAD_CHUNK_SIZE - 1, fileBytes.LongLength - 1);
           var content = new ByteArrayContent(fileBytes[(int)i..(int)(maxByte + 1)]);
           content.Headers.Add("Content-Length", $"{maxByte - i + 1}");
           content.Headers.Add("Content-Range", $"bytes {i}-{maxByte}/{fileBytes.LongLength}");
@@ -259,6 +259,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
         {
           if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
           {
+            GenerateAndUploadKek(userKey).Wait();
           }
 
           var errorBody = await response.Content.ReadAsStringAsync();
@@ -323,7 +324,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
 
         async Task SearchAndRotateKeysRecursive(string folderPath = "SESAR")
         {
-          string listItemsInFolderRequest = $"https://graph.microsoft.com/v1.0/users/wguay@secure-exchanges.info/drive/root:/{folderPath}:/children";
+          string listItemsInFolderRequest = $"https://graph.microsoft.com/v1.0/users/{_user}/drive/root:/{folderPath}:/children";
 
           while (!string.IsNullOrEmpty(listItemsInFolderRequest))
           {
