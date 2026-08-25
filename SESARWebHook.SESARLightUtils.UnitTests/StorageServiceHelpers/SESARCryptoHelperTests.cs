@@ -2,6 +2,7 @@
 using SESARLightUtils;
 using SESARWebhook.SESARLightUtils.StorageServiceHelpers;
 using System;
+using System.Collections.Generic;
 
 namespace SESARWebHook.SESARLightUtils.UnitTests.StorageServiceHelpers
 {
@@ -153,15 +154,19 @@ namespace SESARWebHook.SESARLightUtils.UnitTests.StorageServiceHelpers
       Assert.IsNotNull(result);
       // Verify structure: IV (12 bytes) + encrypted data (8 bytes) + tag (16 bytes) = 36 bytes
       Assert.AreEqual(12 + 8 + 16, result.Length);
-      // The IV should be at the beginning (first 12 bytes should all be 0 since we use zero-initialized IV)
-      byte[] expectedIV = new byte[Constants.IV_SIZE_IN_BYTES];
+
+      // The IV is at the beginning and must be random, not zero-initialized.
+      // Reusing a nonce across encryptions under the same key breaks AES-GCM:
+      // it leaks the XOR of the plaintexts and allows recovery of the authentication
+      // subkey, which lets an attacker forge valid tags.
+      byte[] zeroIV = new byte[Constants.IV_SIZE_IN_BYTES];
       byte[] resultIV = new byte[Constants.IV_SIZE_IN_BYTES];
       Array.Copy(result, 0, resultIV, 0, Constants.IV_SIZE_IN_BYTES);
-      CollectionAssert.AreEqual(expectedIV, resultIV);
+      CollectionAssert.AreNotEqual(zeroIV, resultIV, "The IV must be randomly generated, never zero-filled.");
     }
 
     [TestMethod]
-    public void EncryptBytes_RepeatedCallsWithSameInputs_ProduceSameOutput()
+    public void EncryptBytes_RepeatedCallsWithSameInputs_ProduceDifferentOutput()
     {
       // Arrange
       byte[] fileData = new byte[] { 0x01, 0x02, 0x03 };
@@ -172,9 +177,12 @@ namespace SESARWebHook.SESARLightUtils.UnitTests.StorageServiceHelpers
       byte[] result2 = SESARCryptoHelper.EncryptBytes(fileData, key);
 
       // Assert
+      // Encryption must NOT be deterministic. Identical output for identical input means
+      // the nonce is being reused under the same key, which is fatal for AES-GCM.
       Assert.IsNotNull(result1);
       Assert.IsNotNull(result2);
-      CollectionAssert.AreEqual(result1, result2);
+      CollectionAssert.AreNotEqual(result1, result2,
+          "Two encryptions of the same plaintext under the same key must differ (unique nonce per call).");
     }
 
     [TestMethod]
@@ -228,21 +236,44 @@ namespace SESARWebHook.SESARLightUtils.UnitTests.StorageServiceHelpers
     }
 
     [TestMethod]
-    public void EncryptBytes_OutputStartsWithZeroedIV_Success()
+    public void EncryptBytes_UsesDistinctIVOnEveryCall_Success()
     {
       // Arrange
       byte[] fileData = new byte[] { 0x01, 0x02, 0x03 };
       byte[] key = new byte[Constants.KEY_SIZE_IN_BYTES];
+      var seenIVs = new HashSet<string>();
+
+      // Act / Assert
+      // Every call must produce a fresh nonce. A collision here would mean the same
+      // (key, nonce) pair is used twice, which is exactly the failure mode this
+      // helper must never exhibit.
+      for (int call = 0; call < 50; call++)
+      {
+        byte[] result = SESARCryptoHelper.EncryptBytes(fileData, key);
+        byte[] iv = new byte[Constants.IV_SIZE_IN_BYTES];
+        Array.Copy(result, 0, iv, 0, Constants.IV_SIZE_IN_BYTES);
+
+        Assert.IsTrue(seenIVs.Add(Convert.ToBase64String(iv)),
+            $"IV repeated on call {call}: the nonce must be unique for every encryption.");
+      }
+    }
+
+    [TestMethod]
+    public void EncryptBytes_ThenDecryptBytes_RoundTripsWithRandomIV()
+    {
+      // Arrange
+      byte[] fileData = new byte[] { 0x0A, 0x0B, 0x0C, 0x0D, 0x0E };
+      byte[] key = new byte[Constants.KEY_SIZE_IN_BYTES];
 
       // Act
-      byte[] result = SESARCryptoHelper.EncryptBytes(fileData, key);
+      byte[] encrypted = SESARCryptoHelper.EncryptBytes(fileData, key);
+      byte[] decrypted = SESARCryptoHelper.DecryptBytes(encrypted, key);
 
       // Assert
-      // The IV portion (first 12 bytes) should be all zeros since we initialize with new byte[]
-      for (int i = 0; i < Constants.IV_SIZE_IN_BYTES; i++)
-      {
-        Assert.AreEqual(0, result[i], $"IV byte at index {i} should be 0");
-      }
+      // The IV travels with the ciphertext, so decryption stays agnostic to how it was
+      // generated. This is what makes the move to a random IV backward compatible with
+      // data encrypted by the previous zero-IV implementation.
+      CollectionAssert.AreEqual(fileData, decrypted);
     }
   }
 }

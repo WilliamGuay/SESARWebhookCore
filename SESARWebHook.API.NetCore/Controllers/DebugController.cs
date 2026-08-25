@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SecureExchangesSDK.Models.Messenging;
 using SESARWebHook.Core.Models;
@@ -15,11 +16,13 @@ namespace SESARWebHook.API.Controllers
   {
     private readonly StartupConfig _config;
     private readonly IConfiguration _appConfig;
+    private readonly ILogger<DebugController> _logger;
 
-    public DebugController(StartupConfig config, IConfiguration appConfig)
+    public DebugController(StartupConfig config, IConfiguration appConfig, ILogger<DebugController> logger)
     {
       _config = config;
       _appConfig = appConfig;
+      _logger = logger;
     }
 
     private bool IsDebugEnabled
@@ -73,7 +76,14 @@ namespace SESARWebHook.API.Controllers
       }
       catch (Exception ex)
       {
-        return StatusCode(500, new { Error = ex.Message, Details = ex.ToString() });
+        _logger.LogError(ex, "Échec du traitement en mode debug. RequestId={RequestId}",
+            HttpContext.TraceIdentifier);
+
+        return StatusCode(500, new
+        {
+          Message = "Le traitement de la requête a échoué.",
+          RequestId = HttpContext.TraceIdentifier
+        });
       }
     }
 
@@ -123,7 +133,14 @@ namespace SESARWebHook.API.Controllers
       }
       catch (Exception ex)
       {
-        return StatusCode(500, new { Error = ex.Message, Details = ex.ToString() });
+        _logger.LogError(ex, "Échec du traitement en mode debug. RequestId={RequestId}",
+            HttpContext.TraceIdentifier);
+
+        return StatusCode(500, new
+        {
+          Message = "Le traitement de la requête a échoué.",
+          RequestId = HttpContext.TraceIdentifier
+        });
       }
     }
 

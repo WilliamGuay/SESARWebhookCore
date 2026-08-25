@@ -1,4 +1,5 @@
 ﻿using SESARWebHook.Core.Auth;
+using SESARWebHook.Core.Models;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -126,6 +127,24 @@ namespace SESARLightUtils.StorageServiceHelpers
     }
 
     public override Task<bool> RotateHeaderKey(string path, byte[] oldKek, byte[] newKek)
+    {
+      throw new NotImplementedException();
+    }
+
+    // TODO: la gestion du KEK n'est pas encore portée sur SharePoint.
+    // Ces trois membres sont des ébauches ajoutées pour rétablir la compilation
+    // après l'ajout des membres abstraits dans SESARStorageServicesOperationHelper.
+    public override Task<byte[]> GetKek(string userKey)
+    {
+      throw new NotImplementedException();
+    }
+
+    public override Task<IntegrationResult> GenerateAndUploadKek(string userKey)
+    {
+      throw new NotImplementedException();
+    }
+
+    public override Task<List<string>> GetAllHeadersPaths()
     {
       throw new NotImplementedException();
     }

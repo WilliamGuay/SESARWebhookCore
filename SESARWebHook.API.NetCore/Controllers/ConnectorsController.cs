@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -11,11 +12,13 @@ namespace SESARWebHook.API.Controllers
   {
     private readonly StartupConfig _config;
     private readonly IConfiguration _appConfig;
+    private readonly ILogger<ConnectorsController> _logger;
 
-    public ConnectorsController(StartupConfig config, IConfiguration appConfig)
+    public ConnectorsController(StartupConfig config, IConfiguration appConfig, ILogger<ConnectorsController> logger)
     {
       _config = config;
       _appConfig = appConfig;
+      _logger = logger;
     }
 
     [HttpGet("")]
@@ -96,11 +99,15 @@ namespace SESARWebHook.API.Controllers
       }
       catch (System.Exception ex)
       {
+        _logger.LogError(ex,
+            "Échec du test de connexion. RequestId={RequestId} ConnectorId={ConnectorId}",
+            HttpContext.TraceIdentifier, connectorId);
+
         return Ok(new
         {
           Success = false,
           Message = "Connection test failed",
-          Error = ex.Message,
+          RequestId = HttpContext.TraceIdentifier,
           ConnectorId = connectorId
         });
       }

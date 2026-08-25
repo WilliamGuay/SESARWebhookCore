@@ -1,4 +1,4 @@
-using MimeKit;
+﻿using MimeKit;
 using SecureExchangesSDK.Helpers;
 using SecureExchangesSDK.Models.Messenging;
 using SESARLightUtils;
@@ -186,7 +186,9 @@ namespace SESARWebHook.Connectors.OneDrive
       {
         return IntegrationResult.Fail(
             "OneDrive authentication failed",
-            ex.ToString(),
+            // ToDiagnosticString() inclut la reponse brute du serveur OAuth.
+            // ErrorDetails porte [JsonIgnore] : ce contenu est journalise, jamais renvoye au client.
+            ex.ToDiagnosticString(),
             ConnectorId
         );
       }

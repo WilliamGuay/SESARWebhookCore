@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using SecureExchangesSDK.Models.Transport;
 using SESARWebHook.Core.Models;
@@ -20,13 +21,75 @@ namespace SESARWebHook.API.Controllers
   [Route("api/webhook")]
   public class WebhookController : ControllerBase
   {
+    /// <summary>
+    /// Message unique renvoyé pour tout échec de traitement.
+    ///
+    /// Volontairement non spécifique : distinguer « déchiffrement échoué » de
+    /// « désérialisation échouée » fournirait à un appelant non authentifié un oracle
+    /// sur le contenu du payload. Le détail réel est journalisé, corrélé par RequestId.
+    /// </summary>
+    private const string GenericFailureMessage = "Le traitement de la requête a échoué.";
+
     private readonly StartupConfig _config;
     private readonly IConfiguration _appConfig;
+    private readonly ILogger<WebhookController> _logger;
 
-    public WebhookController(StartupConfig config, IConfiguration appConfig)
+    public WebhookController(StartupConfig config, IConfiguration appConfig, ILogger<WebhookController> logger)
     {
       _config = config;
       _appConfig = appConfig;
+      _logger = logger;
+    }
+
+    /// <summary>
+    /// Identifiant de corrélation de la requête HTTP courante.
+    /// Réutilise le TraceIdentifier d'ASP.NET Core pour que les journaux du framework
+    /// et les nôtres portent la même valeur.
+    /// </summary>
+    private string CorrelationId => HttpContext?.TraceIdentifier ?? System.Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    /// Point de sortie unique des actions de ce contrôleur.
+    ///
+    /// En cas d'échec : journalise le détail technique, puis le supprime du résultat et
+    /// remplace le message par un libellé générique. Seul le RequestId permet ensuite de
+    /// relier la réponse au détail journalisé.
+    /// </summary>
+    private IActionResult Respond(IntegrationResult result, string requestId)
+    {
+      result.RequestId = requestId;
+
+      if (result.Success)
+      {
+        return Ok(result);
+      }
+
+      _logger.LogError(
+          "Échec du traitement webhook. RequestId={RequestId} ConnectorId={ConnectorId} Message={Message} Détail={ErrorDetails}",
+          requestId, result.ConnectorId, result.Message, result.ErrorDetails);
+
+      // Ceinture et bretelles : ErrorDetails porte déjà [JsonIgnore], on le neutralise
+      // malgré tout pour qu'aucun autre chemin de sérialisation ne puisse l'exposer.
+      result.ErrorDetails = null;
+      result.Message = GenericFailureMessage;
+
+      return StatusCode(500, result);
+    }
+
+    /// <summary>
+    /// Variante de <see cref="Respond"/> pour les échecs construits directement dans le
+    /// contrôleur, à partir d'une exception.
+    /// </summary>
+    private IActionResult RespondWithException(System.Exception ex, string stage, string connectorId, string requestId)
+    {
+      _logger.LogError(ex,
+          "Échec du traitement webhook à l'étape {Stage}. RequestId={RequestId} ConnectorId={ConnectorId}",
+          stage, requestId, connectorId);
+
+      var result = IntegrationResult.Fail(GenericFailureMessage, null, connectorId);
+      result.RequestId = requestId;
+
+      return StatusCode(500, result);
     }
 
     [HttpPost("")]
@@ -86,10 +149,16 @@ namespace SESARWebHook.API.Controllers
         return StatusCode(500, new { Error = "Generic connector not initialized." });
       }
 
+      var requestId = CorrelationId;
+
       if (!processor.ValidateAuthentication(request.Args.HashKey))
       {
-        return StatusCode((int)HttpStatusCode.Unauthorized, IntegrationResult.Fail(
-            "Authentication failed", "Invalid hash key", handlerId));
+        _logger.LogWarning("Authentification webhook refusée. RequestId={RequestId} HandlerId={HandlerId}",
+            requestId, handlerId);
+
+        var authResult = IntegrationResult.Fail("Authentication failed", null, handlerId);
+        authResult.RequestId = requestId;
+        return StatusCode((int)HttpStatusCode.Unauthorized, authResult);
       }
 
       string jsonPayload;
@@ -99,8 +168,7 @@ namespace SESARWebHook.API.Controllers
       }
       catch (System.Exception ex)
       {
-        return StatusCode(500, IntegrationResult.Fail(
-            "Decryption failed", ex.Message, handlerId));
+        return RespondWithException(ex, "déchiffrement", handlerId, requestId);
       }
 
       SecureExchangesSDK.Models.Messenging.StoreManifest manifest;
@@ -110,13 +178,13 @@ namespace SESARWebHook.API.Controllers
       }
       catch (System.Exception ex)
       {
-        return StatusCode(500, IntegrationResult.Fail(
-            "Deserialization failed", ex.Message, handlerId));
+        return RespondWithException(ex, "désérialisation", handlerId, requestId);
       }
 
       var context = new WebhookContext
       {
         ConnectorId = handlerId,
+        RequestId = requestId,
         Metadata = new Dictionary<string, object>
                 {
                     { "HandlerId", handlerId }
@@ -126,14 +194,7 @@ namespace SESARWebHook.API.Controllers
 
       var result = await genericConnector.ProcessManifestAsync(manifest, context);
 
-      if (result.Success)
-      {
-        return Ok(result);
-      }
-      else
-      {
-        return StatusCode(500, result);
-      }
+      return Respond(result, requestId);
     }
 
     [HttpPost("{connectorId}")]
@@ -175,14 +236,42 @@ namespace SESARWebHook.API.Controllers
         return StatusCode(500, new { Error = "Webhook processor not initialized. Check encryption key configuration." });
       }
 
+      var requestId = CorrelationId;
       var connectorIds = connectors.Split(',');
-      var results = await processor.ProcessWebhookWithMultipleConnectorsAsync(request.Args, connectorIds);
+      var results = await processor.ProcessWebhookWithMultipleConnectorsAsync(request.Args, requestId, connectorIds);
 
       return Ok(new
       {
         Success = true,
-        Results = results
+        RequestId = requestId,
+        Results = SanitizeResults(results, requestId)
       });
+    }
+
+    /// <summary>
+    /// Applique le même traitement que <see cref="Respond"/> à un lot de résultats :
+    /// journalise les détails techniques puis les retire des objets renvoyés.
+    /// </summary>
+    private IntegrationResult[] SanitizeResults(IntegrationResult[] results, string requestId)
+    {
+      foreach (var result in results)
+      {
+        if (result == null) continue;
+
+        result.RequestId = requestId;
+
+        if (!result.Success)
+        {
+          _logger.LogError(
+              "Échec du traitement webhook. RequestId={RequestId} ConnectorId={ConnectorId} Message={Message} Détail={ErrorDetails}",
+              requestId, result.ConnectorId, result.Message, result.ErrorDetails);
+
+          result.ErrorDetails = null;
+          result.Message = GenericFailureMessage;
+        }
+      }
+
+      return results;
     }
 
     [HttpPost("handler/multi")]
@@ -213,10 +302,16 @@ namespace SESARWebHook.API.Controllers
         return StatusCode(500, new { Error = "Handler system not initialized." });
       }
 
+      var requestId = CorrelationId;
+
       if (!processor.ValidateAuthentication(request.Args.HashKey))
       {
-        return StatusCode((int)HttpStatusCode.Unauthorized, IntegrationResult.Fail(
-            "Authentication failed", "Invalid hash key", "multi-handler"));
+        _logger.LogWarning("Authentification webhook refusée. RequestId={RequestId} HandlerId={HandlerId}",
+            requestId, "multi-handler");
+
+        var authResult = IntegrationResult.Fail("Authentication failed", null, "multi-handler");
+        authResult.RequestId = requestId;
+        return StatusCode((int)HttpStatusCode.Unauthorized, authResult);
       }
 
       string jsonPayload;
@@ -226,8 +321,7 @@ namespace SESARWebHook.API.Controllers
       }
       catch (System.Exception ex)
       {
-        return StatusCode(500, IntegrationResult.Fail(
-            "Decryption failed", ex.Message, "multi-handler"));
+        return RespondWithException(ex, "déchiffrement", "multi-handler", requestId);
       }
 
       SecureExchangesSDK.Models.Messenging.StoreManifest manifest;
@@ -237,8 +331,7 @@ namespace SESARWebHook.API.Controllers
       }
       catch (System.Exception ex)
       {
-        return StatusCode(500, IntegrationResult.Fail(
-            "Deserialization failed", ex.Message, "multi-handler"));
+        return RespondWithException(ex, "désérialisation", "multi-handler", requestId);
       }
 
       var handlerIds = handlers.Split(',');
@@ -259,6 +352,7 @@ namespace SESARWebHook.API.Controllers
         var context = new WebhookContext
         {
           ConnectorId = id,
+          RequestId = requestId,
           Metadata = new Dictionary<string, object>
                     {
                         { "HandlerId", id }
@@ -273,13 +367,18 @@ namespace SESARWebHook.API.Controllers
 
       foreach (var unknown in unknownHandlers)
       {
-        results.Add(IntegrationResult.Fail("Handler not found", $"No handler registered with ID '{unknown}'", unknown));
+        // « Handler introuvable » n'est pas une information sensible : l'inventaire est
+        // de toute façon fourni par /api/handlers. On garde donc le message explicite,
+        // mais sans énumérer les handlers disponibles.
+        var notFound = IntegrationResult.Fail("Handler not found", null, unknown);
+        notFound.RequestId = requestId;
+        results.Add(notFound);
       }
 
       if (tasks.Count > 0)
       {
         var handlerResults = await Task.WhenAll(tasks);
-        foreach (var result in handlerResults)
+        foreach (var result in SanitizeResults(handlerResults, requestId))
         {
           results.Add(result);
         }
@@ -288,6 +387,7 @@ namespace SESARWebHook.API.Controllers
       return Ok(new
       {
         Success = unknownHandlers.Count == 0 && tasks.Count > 0,
+        RequestId = requestId,
         TotalHandlers = handlerIds.Length,
         Processed = tasks.Count,
         Failed = unknownHandlers.Count,
@@ -311,16 +411,10 @@ namespace SESARWebHook.API.Controllers
         return NotFound();
       }
 
-      var result = await processor.ProcessWebhookAsync(webhookData, connectorId, isRotate);
+      var requestId = CorrelationId;
+      var result = await processor.ProcessWebhookAsync(webhookData, connectorId, isRotate, requestId);
 
-      if (result.Success)
-      {
-        return Ok(result);
-      }
-      else
-      {
-        return StatusCode(500, result);
-      }
+      return Respond(result, requestId);
     }
   }
 }

@@ -36,7 +36,19 @@ namespace SESARWebHook.Core.Auth
     {
     }
 
-    public override string ToString()
+    /// <summary>
+    /// Représentation destinée EXCLUSIVEMENT à la journalisation côté serveur.
+    ///
+    /// <see cref="RawResponse"/> contient la réponse brute du serveur d'autorisation, qui
+    /// peut inclure des détails de configuration du tenant et des messages d'erreur
+    /// internes. Elle est volontairement absente de <see cref="Exception.ToString"/> :
+    /// surcharger ToString() ferait fuiter ce contenu par tout chemin appelant ToString()
+    /// implicitement — journalisation d'une exception englobante, interpolation de
+    /// chaîne, page d'exception développeur.
+    ///
+    /// N'appeler cette méthode que vers une destination de journalisation.
+    /// </summary>
+    public string ToDiagnosticString()
     {
       var result = base.ToString();
       if (!string.IsNullOrEmpty(RawResponse))

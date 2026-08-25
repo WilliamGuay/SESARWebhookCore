@@ -170,7 +170,7 @@ namespace SESARWebHook.Tests
       };
 
       var results = await processor.ProcessWebhookWithMultipleConnectorsAsync(
-          webhook, "fake-connector", "nonexistent");
+          webhook, "test-request-id", "fake-connector", "nonexistent");
 
       Assert.AreEqual(2, results.Length);
 

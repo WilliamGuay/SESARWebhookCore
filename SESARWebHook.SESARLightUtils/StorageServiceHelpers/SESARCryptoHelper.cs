@@ -1,4 +1,5 @@
-﻿using SESARLightUtils;
+﻿using SecureExchangesSDK.Helpers;
+using SESARLightUtils;
 using System.Security.Cryptography;
 
 namespace SESARWebhook.SESARLightUtils.StorageServiceHelpers
@@ -9,7 +10,7 @@ namespace SESARWebhook.SESARLightUtils.StorageServiceHelpers
     {
       using (var aesGcm = new AesGcm(key, Constants.TAG_SIZE_IN_BYTES))
       {
-        byte[] iv = new byte[Constants.IV_SIZE_IN_BYTES];
+        byte[] iv = CryptoHelper.GenerateSecureRandomByteArray(Constants.IV_SIZE_IN_BYTES);
         byte[] tag = new byte[Constants.TAG_SIZE_IN_BYTES];
         byte[] encryptedData = new byte[file.Length];
         aesGcm.Encrypt(iv, file, encryptedData, tag);

@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using SecureExchangesSDK.Models.Messenging;
 using SESARWebHook.Core.Auth;
 using SESARWebHook.Core.Interfaces;
@@ -183,7 +183,9 @@ namespace SESARWebHook.Connectors.Dynamics
       {
         return IntegrationResult.Fail(
             "Dynamics 365 authentication failed",
-            ex.ToString(),
+            // ToDiagnosticString() inclut la reponse brute du serveur OAuth.
+            // ErrorDetails porte [JsonIgnore] : ce contenu est journalise, jamais renvoye au client.
+            ex.ToDiagnosticString(),
             ConnectorId
         );
       }

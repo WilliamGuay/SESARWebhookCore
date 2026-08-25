@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using SecureExchangesSDK.Models.Messenging;
 using SESARWebHook.Connectors.ZohoCRM.Models;
 using SESARWebHook.Core.Auth;
@@ -172,7 +172,9 @@ namespace SESARWebHook.Connectors.ZohoCRM
       {
         return IntegrationResult.Fail(
             "Zoho authentication failed",
-            ex.ToString(),
+            // ToDiagnosticString() inclut la reponse brute du serveur OAuth.
+            // ErrorDetails porte [JsonIgnore] : ce contenu est journalise, jamais renvoye au client.
+            ex.ToDiagnosticString(),
             ConnectorId
         );
       }

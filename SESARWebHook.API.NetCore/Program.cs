@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -72,6 +73,34 @@ namespace SESARWebHook.API
         {
           logger.LogWarning($"Application initialization warning: {startup.InitializationError}");
         }
+
+        // Filet de sécurité : toute exception non gérée est journalisée côté serveur et
+        // convertie en une réponse générique. Sans ce gestionnaire, l'environnement
+        // Development afficherait la page d'exception développeur (code source + trace
+        // complète) à l'appelant.
+        app.UseExceptionHandler(errorApp =>
+        {
+          errorApp.Run(async ctx =>
+          {
+            var feature = ctx.Features.Get<IExceptionHandlerPathFeature>();
+            var requestId = ctx.TraceIdentifier;
+
+            ctx.RequestServices.GetRequiredService<ILogger<Program>>().LogError(
+                feature?.Error,
+                "Exception non gérée. RequestId={RequestId} Path={Path}",
+                requestId, feature?.Path);
+
+            ctx.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            ctx.Response.ContentType = "application/json";
+
+            await ctx.Response.WriteAsJsonAsync(new
+            {
+              Success = false,
+              Message = "Une erreur interne est survenue.",
+              RequestId = requestId
+            });
+          });
+        });
 
         app.UseHttpsRedirection();
         app.MapControllers();

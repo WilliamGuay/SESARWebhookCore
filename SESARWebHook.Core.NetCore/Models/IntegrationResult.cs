@@ -19,9 +19,27 @@ namespace SESARWebHook.Core.Models
     public string Message { get; set; }
 
     /// <summary>
-    /// Error details if the operation failed
+    /// Error details if the operation failed.
+    ///
+    /// USAGE INTERNE UNIQUEMENT — journalisé côté serveur, jamais renvoyé au client.
+    /// Ce champ contient régulièrement des traces d'exception, des chemins de fichiers
+    /// et des réponses brutes de systèmes tiers. Les deux attributs JsonIgnore
+    /// garantissent qu'il ne peut pas être sérialisé dans une réponse HTTP, quel que
+    /// soit le sérialiseur utilisé (l'API utilise Newtonsoft, d'autres projets
+    /// System.Text.Json).
+    ///
+    /// Pour corréler une réponse client avec le détail journalisé, utiliser <see cref="RequestId"/>.
     /// </summary>
+    [Newtonsoft.Json.JsonIgnore]
+    [System.Text.Json.Serialization.JsonIgnore]
     public string ErrorDetails { get; set; }
+
+    /// <summary>
+    /// Identifiant de corrélation de la requête.
+    /// C'est la seule information d'erreur exploitable renvoyée au client : elle permet
+    /// de retrouver le détail complet dans les journaux du serveur.
+    /// </summary>
+    public string RequestId { get; set; }
 
     /// <summary>
     /// The connector ID that processed this request

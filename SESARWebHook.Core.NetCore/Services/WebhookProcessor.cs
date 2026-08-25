@@ -54,12 +54,17 @@ namespace SESARWebHook.Core.Services
     /// <summary>
     /// Processes an incoming webhook request
     /// </summary>
-    public async Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, bool isRotation = false)
+    public async Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, bool isRotation = false, string requestId = null)
     {
       var context = new WebhookContext
       {
         ConnectorId = connectorId
       };
+
+      if (!string.IsNullOrEmpty(requestId))
+      {
+        context.RequestId = requestId;
+      }
 
       try
       {
@@ -137,13 +142,14 @@ namespace SESARWebHook.Core.Services
     /// </summary>
     public async Task<IntegrationResult[]> ProcessWebhookWithMultipleConnectorsAsync(
         SesarWebHook webhookData,
+        string requestId,
         params string[] connectorIds)
     {
       var results = new IntegrationResult[connectorIds.Length];
 
       for (int i = 0; i < connectorIds.Length; i++)
       {
-        results[i] = await ProcessWebhookAsync(webhookData, connectorIds[i]);
+        results[i] = await ProcessWebhookAsync(webhookData, connectorIds[i], false, requestId);
       }
 
       return results;
