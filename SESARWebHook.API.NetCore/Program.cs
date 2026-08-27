@@ -14,9 +14,11 @@ using SESARWebHook.Connectors.ZohoCRM;
 using SESARWebHook.Core.Configuration;
 using SESARWebHook.Core.Connectors;
 using SESARWebHook.Core.Interfaces;
+using SESARWebHook.API.Logging;
 using SESARWebHook.Core.Services;
-using SESARWebHook.SESARLightUtils.StorageServiceHelpers;
 using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace SESARWebHook.API
 {
@@ -24,6 +26,8 @@ namespace SESARWebHook.API
   {
     public static void Main(string[] args)
     {
+      StartupConfig startup = null;
+
       try
       {
         var builder = WebApplication.CreateBuilder(args);
@@ -37,18 +41,30 @@ namespace SESARWebHook.API
             });
 
         // Add logging
+        var logPath = builder.Configuration["LogPath"];
+        if (string.IsNullOrEmpty(logPath))
+        {
+          logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+        }
+
         builder.Services.AddLogging(config =>
         {
           config.AddConsole();
           config.AddDebug();
           config.SetMinimumLevel(LogLevel.Debug);
+
+          // LogPath etait declare dans appsettings.json et expose par
+          // WebHookConfigHelper.LogPath, mais aucun provider ne le consommait.
+          // Niveau Information : la progression Debug reste sur la console, le
+          // fichier ne retient que ce qui sert au diagnostic post-mortem.
+          config.AddProvider(new FileLoggerProvider(logPath, LogLevel.Information));
         });
 
         // Initialize configuration helper
         WebHookConfigHelper.Initialize(builder.Configuration);
 
         // Initialize connectors
-        var startup = new StartupConfig();
+        startup = new StartupConfig();
         startup.InitializeConnectors();
 
         // Register singletons for DI
@@ -65,6 +81,15 @@ namespace SESARWebHook.API
 
         // Log startup status
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+        // InitializeConnectors() s'execute avant builder.Build(), donc avant l'existence
+        // du logger : ses diagnostics sont tamponnes puis rejoues ici. Sans ce rejeu ils
+        // n'atteignaient que Console.Error et disparaissaient en hebergement IIS/service.
+        foreach (var diagnostic in startup.InitializationDiagnostics)
+        {
+          logger.Log(diagnostic.Level, "Initialization: {Diagnostic}", diagnostic.Message);
+        }
+
         if (startup.IsInitialized)
         {
           logger.LogInformation("Application initialized successfully");
@@ -109,6 +134,16 @@ namespace SESARWebHook.API
       }
       catch (Exception ex)
       {
+        // Le logger n'existe pas forcement a ce stade (echec avant/pendant Build()) :
+        // on vide le tampon sur stderr pour ne pas perdre le diagnostic.
+        if (startup != null)
+        {
+          foreach (var diagnostic in startup.InitializationDiagnostics)
+          {
+            Console.Error.WriteLine($"[{diagnostic.Level}] {diagnostic.Message}");
+          }
+        }
+
         Console.Error.WriteLine($"Fatal error during application startup: {ex.GetType().Name}");
         Console.Error.WriteLine($"Message: {ex.Message}");
         Console.Error.WriteLine($"Stack Trace: {ex.StackTrace}");
@@ -122,6 +157,16 @@ namespace SESARWebHook.API
     }
   }
 
+  /// <summary>
+  /// Un message de diagnostic collecte pendant l'initialisation, avec sa severite,
+  /// pour etre rejoue dans ILogger une fois celui-ci disponible.
+  /// </summary>
+  public class InitializationDiagnostic
+  {
+    public LogLevel Level { get; set; }
+    public string Message { get; set; }
+  }
+
   public class StartupConfig
   {
     public ConnectorRegistry ConnectorRegistry { get; private set; }
@@ -131,16 +176,32 @@ namespace SESARWebHook.API
     public bool IsInitialized { get; private set; }
     public string InitializationError { get; private set; }
 
+    /// <summary>
+    /// Diagnostics collectes pendant InitializeConnectors(), qui tourne avant que le
+    /// logger existe. Rejoues dans ILogger juste apres builder.Build().
+    /// </summary>
+    public List<InitializationDiagnostic> InitializationDiagnostics { get; } =
+        new List<InitializationDiagnostic>();
+
+    private void AddDiagnostic(LogLevel level, string message)
+    {
+      InitializationDiagnostics.Add(new InitializationDiagnostic
+      {
+        Level = level,
+        Message = message
+      });
+    }
+
     public void InitializeConnectors()
     {
       try
       {
-        Console.WriteLine("Starting connector initialization...");
+        AddDiagnostic(LogLevel.Debug, "Starting connector initialization...");
 
         ConnectorRegistry = new ConnectorRegistry();
         HandlerRegistry = new HandlerRegistry();
 
-        Console.WriteLine("Registering connectors...");
+        AddDiagnostic(LogLevel.Debug, "Registering connectors...");
 
         // Register all available built-in connectors
         ConnectorRegistry.RegisterConnector<FileSystemConnector>();
@@ -149,20 +210,20 @@ namespace SESARWebHook.API
         ConnectorRegistry.RegisterConnector<DynamicsConnector>();
         ConnectorRegistry.RegisterConnector<OneDriveConnector>();
 
-        Console.WriteLine("Registering generic connector...");
+        AddDiagnostic(LogLevel.Debug, "Registering generic connector...");
 
         // Register the Generic Connector (for custom client handlers)
         GenericConnector = new GenericConnector(HandlerRegistry);
         ConnectorRegistry.RegisterConnector("generic", typeof(GenericConnector));
         ConnectorRegistry.PreCacheConnectorInstance("generic", GenericConnector);
 
-        Console.WriteLine("Scanning for custom handlers...");
+        AddDiagnostic(LogLevel.Debug, "Scanning for custom handlers...");
 
         // Scan for custom handler DLLs in the /Handlers/ folder
         var handlersPath = WebHookConfigHelper.HandlersPath;
         HandlerRegistry.ScanForHandlers(handlersPath);
 
-        Console.WriteLine("Initializing connector settings...");
+        AddDiagnostic(LogLevel.Debug, "Initializing connector settings...");
 
         // Initialize all registered connectors with their settings
         try
@@ -172,7 +233,7 @@ namespace SESARWebHook.API
           {
             try
             {
-              Console.WriteLine($"  Initializing connector: {connectorId}");
+              AddDiagnostic(LogLevel.Debug, $"Initializing connector: {connectorId}");
               var connectorSettings = GetConnectorSettings(connectorId);
               if (connectorSettings != null && connectorSettings.Count > 0)
               {
@@ -180,34 +241,32 @@ namespace SESARWebHook.API
                 if (connectorObj is IIntegrationConnector connector)
                 {
                   connector.Initialize(connectorSettings);
-                  Console.WriteLine($"  ✓ Connector '{connectorId}' initialized successfully");
+                  AddDiagnostic(LogLevel.Information, $"Connector '{connectorId}' initialized successfully");
                 }
                 else
                 {
-                  Console.WriteLine($"  ⚠ Connector '{connectorId}' does not implement IIntegrationConnector");
+                  AddDiagnostic(LogLevel.Warning, $"Connector '{connectorId}' does not implement IIntegrationConnector");
                 }
               }
               else
               {
-                Console.WriteLine($"  ℹ No settings found for connector '{connectorId}'");
+                AddDiagnostic(LogLevel.Information, $"No settings found for connector '{connectorId}'");
               }
             }
             catch (Exception ex)
             {
-              Console.Error.WriteLine($"  ✗ Failed to initialize connector '{connectorId}': {ex.GetType().Name}: {ex.Message}");
-              if (ex.InnerException != null)
-              {
-                Console.Error.WriteLine($"    Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
-              }
+              // Exception complete (type, message, inner, trace) : c'est le diagnostic
+              // le plus utile quand un connecteur refuse de s'initialiser.
+              AddDiagnostic(LogLevel.Error, $"Failed to initialize connector '{connectorId}': {ex}");
             }
           }
         }
         catch (Exception ex)
         {
-          Console.Error.WriteLine($"Error during connector initialization loop: {ex.GetType().Name}: {ex.Message}");
+          AddDiagnostic(LogLevel.Error, $"Error during connector initialization loop: {ex}");
         }
 
-        Console.WriteLine("Initializing webhook processor...");
+        AddDiagnostic(LogLevel.Debug, "Initializing webhook processor...");
 
         try
         {
@@ -219,7 +278,7 @@ namespace SESARWebHook.API
           {
             WebhookProcessor = new WebhookProcessor(ConnectorRegistry, key, iv);
             IsInitialized = true;
-            Console.WriteLine("✓ Application initialization completed successfully");
+            AddDiagnostic(LogLevel.Information, "Application initialization completed successfully");
           }
           else
           {
@@ -229,7 +288,7 @@ namespace SESARWebHook.API
                 $"WebHookEncryptionKey={keyStatus}, WebHookEncryptionIV={ivStatus}. " +
                 $"Verify that the file exists and contains these keys.";
             IsInitialized = false;
-            Console.Error.WriteLine($"✗ {InitializationError}");
+            AddDiagnostic(LogLevel.Error, InitializationError);
           }
         }
         catch (Exception ex)
@@ -240,7 +299,7 @@ namespace SESARWebHook.API
             InitializationError += $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
           }
           IsInitialized = false;
-          Console.Error.WriteLine($"✗ {InitializationError}");
+          AddDiagnostic(LogLevel.Error, InitializationError);
         }
       }
       catch (Exception ex)
@@ -251,7 +310,7 @@ namespace SESARWebHook.API
           InitializationError += $" | Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
         }
         IsInitialized = false;
-        Console.Error.WriteLine($"✗ {InitializationError}");
+        AddDiagnostic(LogLevel.Error, InitializationError);
         throw;
       }
     }

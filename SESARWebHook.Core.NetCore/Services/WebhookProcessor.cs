@@ -54,7 +54,7 @@ namespace SESARWebHook.Core.Services
     /// <summary>
     /// Processes an incoming webhook request
     /// </summary>
-    public async Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, bool isRotation = false, string requestId = null)
+    public async Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, string requestId = null)
     {
       var context = new WebhookContext
       {
@@ -121,11 +121,7 @@ namespace SESARWebHook.Core.Services
         }
 
         // Process with the connector
-        if (!isRotation)
-        {
           return await connector.ProcessManifestAsync(manifest, context);
-        }
-        return await connector.RotateKey();
       }
       catch (Exception ex)
       {
@@ -149,7 +145,7 @@ namespace SESARWebHook.Core.Services
 
       for (int i = 0; i < connectorIds.Length; i++)
       {
-        results[i] = await ProcessWebhookAsync(webhookData, connectorIds[i], false, requestId);
+        results[i] = await ProcessWebhookAsync(webhookData, connectorIds[i], requestId);
       }
 
       return results;

@@ -41,31 +41,6 @@ namespace SESARLightUtils.StorageServiceHelpers
       accessToken = await _authHelper.GetAccessTokenAsync();
     }
 
-    public override async Task<SEDecryptedSecureFile> DownloadFile(SEDecryptedSecureFileHeader header)
-    {
-      if (header == null)
-        throw new ArgumentNullException(nameof(header));
-      if (string.IsNullOrEmpty(accessToken))
-        Authenticate();
-      if (header.ServiceIds.ContainsKey("SharePoint"))
-      {
-        using (var client = new HttpClient())
-        {
-          client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", accessToken);
-          client.DefaultRequestHeaders.Accept.Add(
-              new MediaTypeWithQualityHeaderValue("application/json"));
-
-          var dataDownloadUrlRequestResponse = await client.GetFromJsonAsync<DownloadUrlRequestResponse>($"https://graph.microsoft.com/v1.0/sites/{siteUri.Host}/drive/items/{header.ServiceIds["SharePoint"]}?select=@microsoft.graph.downloadUrl");
-          using (Stream dataStream = await client.GetStreamAsync(dataDownloadUrlRequestResponse.DownloadUrl))
-          {
-            return new SEDecryptedSecureFile(await StreamToByteArrayAsync(dataStream), header);
-          }
-        }
-      }
-      throw new Exception("An error has occured when downloading file data.");
-    }
-
     public async override Task<string> UploadFile(byte[] file, string fileName, string folderName, bool overrideExistingFile = false)
     {
       if (file == null)

@@ -20,7 +20,7 @@ namespace SESARWebHook.Core.Interfaces
     /// When null, the context generates its own.
     /// </param>
     /// <returns>Result of the processing operation</returns>
-    Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, bool isRotate = false, string requestId = null);
+    Task<IntegrationResult> ProcessWebhookAsync(SesarWebHook webhookData, string connectorId, string requestId = null);
 
     /// <summary>
     /// Validates the webhook authentication

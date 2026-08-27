@@ -2,6 +2,7 @@
 using SecureExchangesSDK.Helpers;
 using SESARLightUtils;
 using SESARLightUtils.StorageServiceHelpers;
+using SESARWebhook.SESARLightUtils.StorageServiceHelpers;
 using SESARWebHook.Core.Auth;
 using SESARWebHook.Core.Models;
 using System.Net.Http.Headers;
@@ -47,37 +48,6 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
       accessToken = await _authHelper.GetAccessTokenAsync();
     }
 
-    public override async Task<SEDecryptedSecureFile> DownloadFile(SEDecryptedSecureFileHeader header)
-    {
-      if (header == null)
-        throw new ArgumentNullException(nameof(header));
-      if (string.IsNullOrEmpty(accessToken))
-        await Authenticate();
-      if (header.ServiceIds.ContainsKey("OneDrive"))
-      {
-        using (var client = new HttpClient())
-        {
-          client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", accessToken);
-
-          var metaUrl = $"https://graph.microsoft.com/v1.0/users/{_user}/drive/items/{header.ServiceIds["OneDrive"]}?$select=@microsoft.graph.downloadUrl";
-          using var response = await client.GetAsync(metaUrl);
-          if (!response.IsSuccessStatusCode)
-          {
-            var errorBody = await response.Content.ReadAsStringAsync();
-            throw new Exception($"Failed to retrieve download URL. Status: {(int)response.StatusCode}. Error: {errorBody}");
-          }
-
-          var dataDownloadUrlRequestResponse = await response.Content.ReadFromJsonAsync<DownloadUrlRequestResponse>();
-          using (Stream dataStream = await client.GetStreamAsync(dataDownloadUrlRequestResponse.DownloadUrl))
-          {
-            return new SEDecryptedSecureFile(await StreamToByteArrayAsync(dataStream), header);
-          }
-        }
-      }
-      throw new Exception("An error has occured when downloading file data.");
-    }
-
     public async override Task<string> UploadFile(byte[] file, string fileName, string folderName, bool overrideExistingFile = true)
     {
       if (string.IsNullOrEmpty(accessToken))
@@ -89,7 +59,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
 
       using (var client = new HttpClient())
       {
-        return await UploadFileWithUploadSession(client, siteUri, file, folderName, fileName);
+        return await UploadFileWithUploadSession(client, siteUri, file, folderName, fileName, overrideExistingFile);
       }
     }
 
@@ -113,7 +83,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
         string fileName = splittedPath[splittedPath.Length - 1];
         string folderName = splittedPath[splittedPath.Length - 2];
 
-        string encodedFilePath = Uri.EscapeDataString(filePath);
+        string encodedFilePath = EscapeGraphPath(filePath);
         var metaUrl = $"https://graph.microsoft.com/v1.0/users/{_user}/drive/root:/SESAR/{encodedFilePath}?$select=@microsoft.graph.downloadUrl";
         using var response = await client.GetAsync(metaUrl);
         if (!response.IsSuccessStatusCode)
@@ -134,6 +104,16 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
           }
         }
       }
+    }
+
+    /// <summary>
+    /// Encode chaque segment d'un chemin Graph separement : les '/' restent des
+    /// separateurs. Uri.EscapeDataString sur le chemin complet les transforme en
+    /// %2F, ce qui designe un caractere litteral dans un nom de fichier.
+    /// </summary>
+    private static string EscapeGraphPath(string path)
+    {
+      return string.Join("/", path.Split('/').Select(Uri.EscapeDataString));
     }
 
     private static async Task<byte[]> StreamToByteArrayAsync(Stream input)
@@ -202,7 +182,7 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
         string fileName = splittedPath[splittedPath.Length - 1];
         string folderName = String.Join("/", splittedPath[1..^1]);
 
-        string encodedFilePath = Uri.EscapeDataString(key);
+        string encodedFilePath = EscapeGraphPath(key);
         var metaUrl = $"https://graph.microsoft.com/v1.0/users/{_user}/drive/root:/{encodedFilePath}?$select=@microsoft.graph.downloadUrl";
         using var response = await client.GetAsync(metaUrl);
         if (!response.IsSuccessStatusCode)
@@ -224,7 +204,8 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
             try
             {
               dHeaderObject = new SEDecryptedSecureFileHeader(oldKek, header);
-            } catch (Exception e)
+            }
+            catch (InvalidDataException e)
             {
               Console.WriteLine("La rotation a déjà été effectuée");
               return true;
@@ -251,38 +232,49 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
         client.DefaultRequestHeaders.Authorization =
               new AuthenticationHeaderValue("Bearer", accessToken);
 
-        string encodedKekPath = Uri.EscapeDataString(kekPath);
+        string encodedKekPath = EscapeGraphPath(kekPath);
         string kekRequestUrl = $"https://graph.microsoft.com/v1.0/users/{_user}/drive/root:/SESAR/{encodedKekPath}:/content";
 
-        using var response = await client.GetAsync(kekRequestUrl);
-        if (!response.IsSuccessStatusCode)
-        {
-          if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-          {
-            GenerateAndUploadKek(userKey).Wait();
-          }
+        var response = await client.GetAsync(kekRequestUrl);
 
-          var errorBody = await response.Content.ReadAsStringAsync();
-          throw new Exception($"Failed to retrieve KEK from OneDrive. Status: {(int)response.StatusCode} {response.StatusCode}. Error: {errorBody}");
+        // Aucun KEK present : on en genere un, puis on relit. Sans cette relecture
+        // le premier upload echouait toujours, meme apres generation reussie.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+          response.Dispose();
+          await GenerateAndUploadKek(userKey);
+          response = await client.GetAsync(kekRequestUrl);
         }
 
-        using (Stream dataStream = await response.Content.ReadAsStreamAsync())
+        using (response)
         {
-          using (var ms = new MemoryStream())
+          if (!response.IsSuccessStatusCode)
           {
-            await dataStream.CopyToAsync(ms);
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Failed to retrieve KEK from OneDrive. Status: {(int)response.StatusCode} {response.StatusCode}. Error: {errorBody}");
+          }
 
-            AesGcm kekAesGcm = new AesGcm(Convert.FromBase64String(userKey!), Constants.TAG_SIZE_IN_BYTES);
-            byte[] encryptedKek = ms.ToArray();
-            byte[] kek = new byte[encryptedKek.Length - Constants.IV_SIZE_IN_BYTES - Constants.TAG_SIZE_IN_BYTES];
+          byte[] kek;
 
-            try
+          using (Stream dataStream = await response.Content.ReadAsStreamAsync())
+          {
+
+            using (var ms = new MemoryStream())
             {
-              kekAesGcm.Decrypt(encryptedKek[..Constants.IV_SIZE_IN_BYTES], encryptedKek[Constants.IV_SIZE_IN_BYTES..^Constants.TAG_SIZE_IN_BYTES], encryptedKek[^Constants.TAG_SIZE_IN_BYTES..], kek);
-            }
-            catch (Exception ex)
-            {
-              throw new InvalidParameterException("Invalid user key");
+              await dataStream.CopyToAsync(ms);
+
+              AesGcm kekAesGcm = new AesGcm(Convert.FromBase64String(userKey!), Constants.TAG_SIZE_IN_BYTES);
+              byte[] encryptedKek = ms.ToArray();
+              kek = new byte[encryptedKek.Length - Constants.IV_SIZE_IN_BYTES - Constants.TAG_SIZE_IN_BYTES];
+
+              try
+              {
+                kekAesGcm.Decrypt(encryptedKek[..Constants.IV_SIZE_IN_BYTES], encryptedKek[Constants.IV_SIZE_IN_BYTES..^Constants.TAG_SIZE_IN_BYTES], encryptedKek[^Constants.TAG_SIZE_IN_BYTES..], kek);
+              }
+              catch (CryptographicException)
+              {
+                throw new InvalidParameterException("Invalid user key");
+              }
             }
             return kek;
           }
@@ -294,20 +286,11 @@ namespace SESARWebHook.SESARLightUtils.StorageServiceHelpers
     {
       byte[] newKek = CryptoHelper.GenerateSecureRandomByteArray(Constants.KEY_SIZE_IN_BYTES);
 
-      AesGcm kekAesGcm = new AesGcm(Convert.FromBase64String(userKey), Constants.TAG_SIZE_IN_BYTES);
-      byte[] kekIv = new byte[Constants.IV_SIZE_IN_BYTES];
-      byte[] encryptedKek = new byte[Constants.KEY_SIZE_IN_BYTES];
-      byte[] kekTag = new byte[Constants.TAG_SIZE_IN_BYTES];
-      kekAesGcm.Encrypt(kekIv, newKek, encryptedKek, kekTag);
-
-      byte[] encryptedKekFile = new byte[kekIv.Length + encryptedKek.Length + kekTag.Length];
-      Buffer.BlockCopy(kekIv, 0, encryptedKekFile, 0, kekIv.Length);
-      Buffer.BlockCopy(encryptedKek, 0, encryptedKekFile, kekIv.Length, encryptedKek.Length);
-      Buffer.BlockCopy(kekTag, 0, encryptedKekFile, encryptedKek.Length + kekIv.Length, kekTag.Length);
+      byte[] encryptedKekFile = SESARCryptoHelper.EncryptBytes(newKek, Convert.FromBase64String(userKey));
 
       await UploadFile(encryptedKekFile, kekPath.Split("/")[1], kekPath.Split("/")[0]);
 
-        return IntegrationResult.Ok();
+      return IntegrationResult.Ok();
     }
 
     public async override Task<List<string>> GetAllHeadersPaths()

@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SecureExchanges.NetCore" Version="26.4.20.2" />
+    <PackageReference Include="SecureExchanges.NetCore" Version="26.6.25.1" />
   </ItemGroup>
 
 	<ItemGroup>

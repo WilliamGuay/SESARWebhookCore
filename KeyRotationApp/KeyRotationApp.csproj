@@ -8,21 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="SecureExchanges.NetCore" Version="26.5.11.1" />
+    <PackageReference Include="SecureExchanges.NetCore" Version="26.6.25.1" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SESARWebHook.Core.NetCore\SESARWebHook.Core.NetCore.csproj" />
     <ProjectReference Include="..\SESARWebHook.SESARLightUtils\SESARWebHook.SESARLightUtils.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="SESARWebHook.Core.NetCore">
-      <HintPath>..\SESARWebHook.SESARLightUtils\bin\Debug\net9.0\SESARWebHook.Core.NetCore.dll</HintPath>
-    </Reference>
-    <Reference Include="SESARWebHook.SESARLightUtils">
-      <HintPath>..\SESARWebHook.SESARLightUtils\bin\Debug\net9.0\SESARWebhook.SESARLightUtils.dll</HintPath>
-    </Reference>
   </ItemGroup>
 
 </Project>

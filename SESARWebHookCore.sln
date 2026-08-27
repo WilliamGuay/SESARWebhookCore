@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.8.12023.21 stable
+VisualStudioVersion = 18.8.12023.21
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Connectors", "Connectors", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
@@ -24,6 +24,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.SESARLightUtils", "SESARWebHook.SESARLightUtils\SESARWebHook.SESARLightUtils.csproj", "{A375849C-59A9-0715-45BF-100662930314}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SESARWebHook.API.NetCore", "SESARWebHook.API.NetCore\SESARWebHook.API.NetCore.csproj", "{386D1215-9A94-4F67-689B-6BD3602456AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KeyRotationApp", "KeyRotationApp\KeyRotationApp.csproj", "{50605B1C-9A9D-2B14-EECF-F72CF530677D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -71,6 +73,10 @@ Global
 		{386D1215-9A94-4F67-689B-6BD3602456AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{386D1215-9A94-4F67-689B-6BD3602456AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{50605B1C-9A9D-2B14-EECF-F72CF530677D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{50605B1C-9A9D-2B14-EECF-F72CF530677D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{50605B1C-9A9D-2B14-EECF-F72CF530677D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{50605B1C-9A9D-2B14-EECF-F72CF530677D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

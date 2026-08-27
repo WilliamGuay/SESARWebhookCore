@@ -146,6 +146,11 @@ using (var client = new HttpClient())
       {
         Console.WriteLine("Le champ ne peux pas être vide");
       }
+      else if (userKeyInput != SECRETS_ALL_CONNECTORS_DOC.RootElement.GetProperty("UserKey").ToString())
+      {
+        Console.WriteLine("La clé d'utilisateur est incorrecte");
+        userKeyInput = "";
+      }
     }
 
     serviceHelper.GenerateAndUploadKek(userKeyInput).Wait();

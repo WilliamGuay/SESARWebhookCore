@@ -40,7 +40,7 @@ namespace SESARWebHook.Connectors.OneDrive
   /// </summary>
   public class OneDriveConnector : IIntegrationConnector
   {
-    private const string Pattern = "[\"*:<>?/\\|]";
+    private const string InvalidCharactersPattern = "[\"*:<>?/\\|]";
     private OAuth2ClientCredentialsHelper _authHelper;
     private string _userKey;
     private SESARStorageServicesOperationHelper serviceHelper;
@@ -167,16 +167,39 @@ namespace SESARWebHook.Connectors.OneDrive
 
         using (var client = new HttpClient())
         {
-          string validFolderName = Regex.Replace(manifest.OriginalRecipientInfo.Subject, Pattern, " ");
+          string validFolderName = Regex.Replace(manifest.OriginalRecipientInfo.Subject, InvalidCharactersPattern, " ");
           validFolderName = Regex.Replace(validFolderName, "  +", " ");
 
-          await CreateFolder(accessToken, client, _oneDriveUserEmail, validFolderName, manifest);
-          await UploadEmail(client, accessToken, _oneDriveUserEmail, validFolderName, manifest);
+          // Les resultats de chaque etape etaient ignores : une exception pendant
+          // l'upload du header ne remontait jamais dans la reponse de l'API, qui
+          // repondait "Manifest Processed" avec un .sech manquant sur OneDrive.
+          var failures = new List<string>();
+
+          var folderResult = await CreateFolder(accessToken, client, _oneDriveUserEmail, validFolderName, manifest);
+          if (!folderResult.Success)
+            failures.Add($"CreateFolder: {folderResult.Message} | {folderResult.ErrorDetails}");
+
+          var emailResult = await UploadEmail(client, accessToken, _oneDriveUserEmail, validFolderName, manifest);
+          if (!emailResult.Success)
+            failures.Add($"UploadEmail: {emailResult.Message} | {emailResult.ErrorDetails}");
 
           if (manifest.FilesMetaData != null && manifest.FilesMetaData.Count > 0)
           {
             for (int i = 0; i < manifest.FilesMetaData.Count; i++)
-              await UploadFile(client, accessToken, _oneDriveUserEmail, manifest, manifest.FilesLocation[i].FullPath, manifest.FilesMetaData[i].RealFileName, validFolderName);
+            {
+              var fileResult = await UploadFile(client, accessToken, _oneDriveUserEmail, manifest, manifest.FilesLocation[i].FullPath, manifest.FilesMetaData[i].RealFileName, validFolderName);
+              if (!fileResult.Success)
+                failures.Add($"UploadFile[{i}] '{manifest.FilesMetaData[i].RealFileName}': {fileResult.Message} | {fileResult.ErrorDetails}");
+            }
+          }
+
+          if (failures.Count > 0)
+          {
+            return IntegrationResult.Fail(
+                $"Manifest partially processed: {failures.Count} step(s) failed",
+                string.Join(Environment.NewLine, failures),
+                ConnectorId
+            );
           }
 
           return IntegrationResult.Ok("Manifest Processed");
@@ -212,19 +235,37 @@ namespace SESARWebHook.Connectors.OneDrive
 
       string dayFolderName = manifest.DirectoryPath.Replace("\\" + manifest.OriginalRecipientInfo.Subject, "");
 
-      var createSESARFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root/children");
-      var SESARContent = new StringContent($"{{ \"name\": \"SESAR\", \"folder\": {{}} }}");
+      var createSESARFolderRequest = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(userEmail)}/drive/root/children";
+      var SESARContent = new StringContent($"{{ \"name\": \"SESAR\", \"folder\": {{}}, \"@microsoft.graph.conflictBehavior\": \"replace\" }}");
       SESARContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
       var SESARCreateReponse = await client.PostAsync(createSESARFolderRequest, SESARContent);
+      if (!SESARCreateReponse.IsSuccessStatusCode)
+      {
+        var errorContent = await SESARCreateReponse.Content.ReadAsStringAsync();
+        return IntegrationResult.Fail(
+            "Failed to create SESAR folder",
+            $"HTTP Status: {SESARCreateReponse.StatusCode}, Response: {errorContent}",
+            ConnectorId
+        );
+      }
 
-      var createDayFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR:/children");
+      var createDayFolderRequest = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(userEmail)}/drive/root:/SESAR:/children";
       var dayFolderContent = new StringContent($"{{ \"name\": \"{dayFolderName}\", \"folder\": {{}} }}");
       dayFolderContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
       var dayFolderCreateReponse = await client.PostAsync(createSESARFolderRequest, SESARContent);
+      if (!dayFolderCreateReponse.IsSuccessStatusCode)
+      {
+        var errorContent = await dayFolderCreateReponse.Content.ReadAsStringAsync();
+        return IntegrationResult.Fail(
+            "Failed to create day folder",
+            $"HTTP Status: {dayFolderCreateReponse.StatusCode}, Response: {errorContent}",
+            ConnectorId
+        );
+      }
 
-      var createFolderRequest = Uri.EscapeDataString($"https://graph.microsoft.com/v1.0/users/{userEmail}/drive/root:/SESAR/{dayFolderName}:/children");
+      var createFolderRequest = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(userEmail)}/drive/root:/SESAR/{dayFolderName}:/children";
       var content = new StringContent($"{{ \"name\": \"{folderName}\", \"folder\": {{}} }}");
       content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
@@ -267,8 +308,16 @@ namespace SESARWebHook.Connectors.OneDrive
         if (deleteHtmlFile)
           File.Delete(emailHtmlFilePath);
 
-        await UploadFile(client, accessToken, userEmail, manifest, emlFilePath, "EmailSent.eml", folderName, true);
-        File.Delete(emlFilePath);
+        var fileResult = await UploadFile(client, accessToken, userEmail, manifest, emlFilePath, "EmailSent.eml", folderName, true);
+        if (!fileResult.Success)
+        {
+          return IntegrationResult.Fail(
+              "Failed to upload email to OneDrive",
+              fileResult.ErrorDetails,
+              ConnectorId
+          );
+        }
+          File.Delete(emlFilePath);
 
         return IntegrationResult.Ok();
       }
@@ -278,17 +327,41 @@ namespace SESARWebHook.Connectors.OneDrive
         {
           File.Delete(emlFilePath);
         }
-        return IntegrationResult.Fail("Erreur lors de la synchronisation du courriel");
+        return IntegrationResult.Fail(
+            "Erreur lors de la synchronisation du courriel",
+            ex.ToString(),
+            ConnectorId
+        );
       }
     }
 
     private async Task<IntegrationResult> UploadFile(HttpClient client, string accessToken, string userEmail, StoreManifest manifest, string filePath, string fileName, string folderName, bool isEmail = false)
     {
       bool deleteFile = false;
+      try
+      {
+        var kek = await serviceHelper.GetKek(_userKey);
+        if (kek == null)
+        {
+          return IntegrationResult.Fail(
+              "Failed to retrieve KEK from OneDrive",
+              "Wrong UserKey. It may have been changed or might not be correctly written in the configuration.",
+              ConnectorId
+          );
+        }
+      }
+      catch
+      {
+        return IntegrationResult.Fail(
+              "Failed to retrieve KEK from OneDrive",
+              "Wrong UserKey. It may have been changed or might not be correctly written in the configuration.",
+              ConnectorId
+          );
+      }
 
       try
       {
-        if (!isEmail)
+        if (!isEmail && File.Exists(filePath + ".secf"))
         {
           string encryptedFilePath = filePath + ".secf";
           CryptoHelper.DecryptFile(encryptedFilePath, filePath, _key, _iv);
@@ -331,53 +404,31 @@ namespace SESARWebHook.Connectors.OneDrive
         Buffer.BlockCopy(kchk, 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length, kchk.Length);
         Buffer.BlockCopy(enFileFullBytes[..12], 0, header, Constants.HEADER_PARAMETERS_SIZE_IN_BYTE_BYTE_RANGE + kiv.Length + enDek.Length + ktag.Length + kchk.Length, 12);
 
-        await serviceHelper.UploadFile(header, fileName + ".sech", folderName);
-      } catch (Exception ex)
-      {
-        if (File.Exists(filePath + ".secf")){
-          File.Delete(filePath + ".secf");
+        var fileResult = await serviceHelper.UploadFile(header, fileName + ".sech", folderName);
+        if (string.IsNullOrEmpty(fileResult))
+        {
+          return IntegrationResult.Fail(
+              "Failed to upload email to OneDrive",
+              "File upload failed thus no Id available",
+              ConnectorId
+          );
         }
       }
-      return IntegrationResult.Ok("File Uploaded");
-    }
-
-    public async Task RotateKey()
-    {
-      byte[] newKek = CryptoHelper.GenerateSecureRandomByteArray(32);
-
-      byte[] oldKek = await serviceHelper.GetKek(_userKey);
-
-      List<string> filesToRotate = await serviceHelper.GetAllHeadersPaths();
-
-      filesToRotate.ForEach(file =>
+      catch (Exception ex)
       {
-        serviceHelper.RotateHeaderKey(file, oldKek, newKek);
-      });
-    }
-
-    Task<IntegrationResult> IIntegrationConnector.RotateKey()
-    {
-      throw new NotImplementedException();
-    }
-
-    public class UploadSessionResponse
-    {
-      public string Context { get; set; }
-      public DateTime ExpirationDate { get; set; }
-      public string NextExcpectedDataTime { get; set; }
-      public string UploadUrl { get; set; }
-    }
-
-    public class DriveItem
-    {
-      public string Id { get; set; }
-      public string Name { get; set; }
-
-      public DriveItem(JsonElement item)
-      {
-        this.Id = item.GetProperty("id").ToString();
-        this.Name = item.GetProperty("name").ToString();
+        // Ne jamais supprimer filePath + ".secf" ici : c'est la source chiffree.
+        // Seul le fichier temporaire dechiffre doit etre nettoye.
+        if (deleteFile && File.Exists(filePath))
+        {
+          File.Delete(filePath);
+        }
+        return IntegrationResult.Fail(
+            $"Failed to upload '{fileName}' to OneDrive",
+            ex.ToString(),
+            ConnectorId
+        );
       }
+      return IntegrationResult.Ok("File Uploaded");
     }
   }
 }
